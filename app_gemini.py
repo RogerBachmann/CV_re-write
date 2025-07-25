@@ -15,7 +15,7 @@ import json
 # -------------------------------------
 st.set_page_config(layout="wide")
 try:
-    api_key = os.getenv("GEMINI_API_KEY")
+    api_key = st.secrets["GEMINI_API_KEY"]
     if not api_key:
         st.error("🔴 Error: GEMINI_API_KEY not found. Please set it up first.")
         st.stop()
