@@ -9,27 +9,27 @@ from docx import Document
 from docxtpl import DocxTemplate
 import io
 import json
-# NEW: Import the XML escaping utility
 from xml.sax.saxutils import escape
 
 # -------------------------------------
 # 2. GEMINI API CONFIGURATION
-# (This section is unchanged)
 # -------------------------------------
 st.set_page_config(layout="wide")
 try:
+    # Use st.secrets for deployment. This is the correct way for Streamlit Cloud.
     genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
     model = genai.GenerativeModel('gemini-1.5-flash')
 except Exception as e:
+    # This error will show on the login page if secrets are not set correctly.
     st.error("🔴 Critical Error: Cannot connect to AI service. Please contact the administrator.")
     st.stop()
 
 # -------------------------------------
 # 3. HELPER FUNCTIONS
 # -------------------------------------
-# (The first two helper functions are unchanged)
+
 def extract_text_from_file(uploaded_file):
-    # ... (no changes here)
+    """Extracts text from an uploaded PDF or DOCX file."""
     try:
         if uploaded_file.type == "application/pdf":
             with pdfplumber.open(uploaded_file) as pdf:
@@ -42,9 +42,56 @@ def extract_text_from_file(uploaded_file):
     return ""
 
 def parse_and_rewrite_cv(consolidated_text, tone_selection):
-    # ... (no changes to the prompt or this function)
+    """The main AI function that parses, rewrites, and returns structured JSON."""
     prompt = f"""
-    You are a Tier-1 executive career coach... 
+    You are a Tier-1 executive career coach and CV writer, specializing in crafting documents for senior-level candidates targeting the Swiss, German, and Austrian markets. Your expertise is in transforming raw, informal career data into a polished, compelling, and strategically effective narrative.
+
+    Your task is to analyze the CONSOLIDATED INPUT TEXT provided below. This text may contain a mix of information from a CV, a cover letter, a target job description, and personal notes. You must first synthesize all this information, then professionally rewrite the content according to the detailed rules below, and finally return the data as a single, clean JSON object.
+
+    **JSON Structure Requirements (Strictly follow this):**
+    The root JSON object must contain these keys: "personal_info", "summary_paragraphs", "languages", "skills", "work_experience", "education", "hobbies".
+
+    1.  `personal_info`: An object with keys "NAME", "JOB_TITLE", "phone", "email", "city", "zip", "Linkedin".
+    2.  `summary_paragraphs`: A list of strings, containing exactly two paragraphs.
+    3.  `languages`: A list of objects, each with "language" and "level". Provide up to 3.
+    4.  `skills`: A list of strings for skills. Provide up to 6.
+    5.  `work_experience`: A list of objects. Each object must have keys: "company", "from", "to", "job_title", "responsibility", and "achievements". Provide up to 15 entries.
+        - `achievements` MUST be a list of strings. Provide up to 3 achievement points per job, based on the input.
+    6.  `education`: A list of objects, each with "degree", "graduation", "university", "university_location", "university_country". Provide up to 6.
+    7.  `hobbies`: A list of strings for hobbies. Provide up to 3.
+
+    ---
+
+    **Master Objective:** The final output must read like it was written by a human expert. It must be strategic, persuasive, and reflect the candidate as a high-impact individual in their field.
+
+    **Advanced Rewriting and Content Generation Rules:**
+
+    **1. Tone and Language (CRITICAL):**
+    - **Language:** Use British English.
+    - **Contextual Analysis:** First, analyze all input. If a job description is included, tailor the CV's language and skills towards that job.
+    - **Dynamic Tone Selection:** The user has selected the following tone: **'{tone_selection}'**. You MUST adapt your writing style accordingly.
+        - If 'Executive / Leadership', use authoritative and strategic language suitable for C-level or management roles.
+        - If 'Technical / Expert', focus on deep domain knowledge, specific technologies, and precise, data-driven language.
+        - If 'Sales / Commercial', use persuasive, energetic language focused on growth, revenue, and client relationships.
+    - **Final Polish:** It should be factual and confident, not boastful.
+
+    **2. Professional Summary (`summary_paragraphs`):**
+    - **Paragraph 1:** Start with a powerful "title-line" defining the candidate's professional identity (e.g., "Commercial Leader with 15 years of experience..."). Follow with their single most impressive, quantifiable achievement from their recent career. **Strictly adhere to a maximum of 310 characters (including spaces).** Be specific and concise.
+    - **Paragraph 2:** Write from the first-person ("I") perspective. Synthesize the candidate's core motivators and values. If no information is provided, create a strong, fitting paragraph based on their profile. **Strictly adhere to a maximum of 160 characters (including spaces).**
+
+    **3. Work Experience (`work_experience`):**
+    - **Responsibility:** Write 1-2 concise sentences defining the scope and core purpose of the role. Quantify it immediately if possible (e.g., "Managed a team of 12 and a P&L of €5M across the DACH region...").
+    - **Achievements:**
+        - **Result-by-Action Framework:** Each bullet point must focus on the result. The preferred format is: "I achieved [Result] by [implementing, leading, creating a specific action]."
+        - **Quantification:** Scour the input text for numbers, percentages, or scale indicators. **If numbers are present, you MUST use them.** If no numbers are present for an achievement, create a strong, descriptive, non-quantified achievement; do not invent numbers.
+        - **Number of Bullet Points:** Generate up to 3 achievement bullet points per job, depending on the richness of the input provided for that role.
+
+    **4. Negative Constraints (What to AVOID AT ALL COSTS):**
+    - **No Passive Voice:** Change "was responsible for" to "Managed," "Oversaw," etc.
+    - **NO BUZZWORDS:** Strictly avoid the following and similar empty phrases: seasoned, results-driven, dynamic, motivated, proven track record, passionate, innovative, creative thinker, strategic thinker, go-getter, self-starter, team player, leader of change, strong communicator, influencer, people-oriented, cross-functional collaborator, change agent. Demonstrate qualities, do not state them.
+
+    **Final Instruction:** If information for any field is not found, use an empty string "" or an empty list []. Your entire output MUST be a single, valid JSON object and nothing else.
+
     CONSOLIDATED INPUT TEXT:
     ---
     {consolidated_text}
@@ -52,30 +99,58 @@ def parse_and_rewrite_cv(consolidated_text, tone_selection):
     """
     try:
         response = model.generate_content(prompt)
-        json_text = response.text.strip().replace("```json", "").replace("```", "")
-        return json.loads(json_text)
+        
+        # --- NEW & IMPROVED ROBUST PARSING LOGIC ---
+
+        # 1. Check if the response was empty or blocked.
+        if not response.parts:
+            st.error("🔴 The AI response was empty. This can happen if the input triggers a content safety filter. Please try modifying the input text.")
+            return None
+
+        # 2. Get the raw text from the AI.
+        raw_text_from_ai = response.text
+        
+        # 3. Clean the text to isolate the JSON object.
+        try:
+            # Find the first '{' and the last '}' to extract the JSON block.
+            start = raw_text_from_ai.find('{')
+            end = raw_text_from_ai.rfind('}') + 1
+            
+            # If a JSON object is not found, raise an error.
+            if start == -1 or end == 0:
+                raise ValueError("A valid JSON object was not found in the AI's response.")
+            
+            clean_json_text = raw_text_from_ai[start:end]
+            
+            # 4. Try to parse the cleaned text.
+            return json.loads(clean_json_text)
+
+        except (ValueError, json.JSONDecodeError) as e:
+            # If parsing fails at any point, show a detailed error message.
+            st.error(f"🔴 Error: Could not parse the AI's response as valid JSON. Details: {e}")
+            st.warning("The AI may have returned conversational text instead of the expected data structure.")
+            st.text_area("Raw output from AI (for debugging):", raw_text_from_ai, height=200)
+            return None
+
     except Exception as e:
-        st.error(f"Error parsing or rewriting CV with Gemini: {e}")
-        st.text_area("Model's Raw Output (for debugging):", response.text if 'response' in locals() else "No response", height=150)
-    return None
+        # Catch any other general errors with the API call itself.
+        st.error(f"An unexpected error occurred with the Gemini API: {e}")
+        return None
 
 def generate_word_document(context):
-    """
-    MODIFIED: This function now uses a helper to clean the context data before rendering.
-    """
+    """Renders the final context dictionary into the Word template, escaping special characters."""
     try:
         # Create a new, cleaned context dictionary
         cleaned_context = {}
         for key, value in context.items():
             if isinstance(value, str):
-                # If the value is a string, escape it
+                # If the value is a string, escape it for XML safety
                 cleaned_context[key] = escape(value)
             else:
                 # Otherwise, keep it as is (for lists, etc.)
                 cleaned_context[key] = value
 
         doc = DocxTemplate("CVTemplate_Python.docx")
-        # Use the cleaned_context to render the document
         doc.render(cleaned_context)
         
         doc_buffer = io.BytesIO()
@@ -88,10 +163,8 @@ def generate_word_document(context):
 
 # -------------------------------------
 # 4. THE MAIN APPLICATION LOGIC
-# (This entire section is unchanged)
 # -------------------------------------
 def run_the_app():
-    # ... (no changes here)
     st.sidebar.success("✅ Logged in successfully!")
     st.title("🇨🇭 The Ultimate Swiss CV Enhancer")
 
@@ -137,7 +210,6 @@ def run_the_app():
         
         with st.form(key='cv_template_form'):
             # This is where all the st.expander and st.text_input form fields go
-            # ... (no changes to the form itself)
             with st.expander("Personal Information", expanded=True):
                 p_info = data.get('personal_info', {})
                 p_info['NAME'] = st.text_input("Name (NAME)", value=p_info.get('NAME', ''))
@@ -206,11 +278,10 @@ def run_the_app():
                 while len(hobbies) < 3: hobbies.append('')
                 for i in range(3): hobbies[i] = st.text_input(f"Hobby {i+1}", value=hobbies[i], key=f"hobby_{i}")
 
-
             submit_button = st.form_submit_button(label='📄 Generate Final Word Document')
 
         if submit_button:
-            # This is where we build the final context dictionary. The logic is the same.
+            # This logic builds the final context dictionary
             final_context = {}
             final_context.update(data.get('personal_info', {}))
             summary_paras = data.get('summary_paragraphs', ['',''])
@@ -235,9 +306,9 @@ def run_the_app():
                 final_context[f'university_{i+1}'] = edu.get('university')
                 final_context[f'university_location_{i+1}'] = edu.get('university_location')
                 final_context[f'university_country_{i+1}'] = edu.get('university_country')
-            for i, hobby in enumerate(data.get('hobbies', [])):
+            for i, hobby in enumerate(data.get('hobbies', [])[:3]):
                 final_context[f'hobby_{i+1}'] = hobby
-            
+
             with st.spinner("Creating your polished Word document..."):
                 doc_buffer = generate_word_document(final_context)
                 if doc_buffer:
@@ -250,7 +321,6 @@ def run_the_app():
 
 # -------------------------------------
 # 5. PASSWORD CHECK
-# (This section is unchanged)
 # -------------------------------------
 def check_password():
     """Returns `True` if the user entered the correct password."""
