@@ -98,7 +98,7 @@ def generate_word_document(context):
 # -------------------------------------
 def run_the_app():
     st.sidebar.success("✅ Logged in successfully!")
-    st.title("🇨🇭 The Ultimate CV Information Hub & Generator")
+    st.title("🇨🇭 The Ultimate Swiss CV Enhancer")
 
     if 'cv_data' not in st.session_state:
         st.session_state.cv_data = None
@@ -111,7 +111,7 @@ def run_the_app():
     )
     free_text_input = st.text_area("Paste any additional notes, text, or ideas here:", height=150)
 
-    if st.button("🚀 Analyze All Info & Fill Form"):
+    if st.button("🚀 Analyse All Info & Fill Form"):
         all_texts = []
         if uploaded_files:
             for file in uploaded_files:
