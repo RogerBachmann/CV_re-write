@@ -20,6 +20,7 @@ try:
     genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
     model = genai.GenerativeModel('gemini-1.5-flash')
 except Exception as e:
+    # This error will show on the login page if secrets are not set correctly.
     st.error("🔴 Critical Error: Cannot connect to AI service. Please contact the administrator.")
     st.stop()
 
@@ -42,8 +43,11 @@ def extract_text_from_file(uploaded_file):
 
 def parse_and_rewrite_cv(consolidated_text, tone_selection):
     """The main AI function that parses, rewrites, and returns structured JSON for loops."""
+    # THIS IS THE FULL, RESTORED PROMPT WITH ALL YOUR RULES AND CONSTRAINTS
     prompt = f"""
-    You are a Tier-1 executive career coach and CV writer... (shortened for brevity)
+    You are a Tier-1 executive career coach and CV writer, specializing in crafting documents for senior-level candidates targeting the Swiss, German, and Austrian markets. Your expertise is in transforming raw, informal career data into a polished, compelling, and strategically effective narrative.
+
+    Your task is to analyze the CONSOLIDATED INPUT TEXT provided below. You must first synthesize all this information, then professionally rewrite the content according to the detailed rules below, and finally return the data as a single, clean JSON object.
 
     **JSON Structure Requirements (Strictly follow this for looping):**
     The root JSON object must contain these keys: "personal_info", "summary_paragraphs", "languages", "skills", "work_experience", "education", "hobbies".
@@ -52,15 +56,42 @@ def parse_and_rewrite_cv(consolidated_text, tone_selection):
     2.  `summary_paragraphs`: A list of strings, containing exactly two paragraphs.
     3.  `languages`: A list of objects, each with "language" and "level" keys.
     4.  `skills`: A simple list of strings.
-    5.  `work_experience`: A list of objects. Each object represents a single job and MUST have these keys: "company", "from", "to", "title", "responsibility", and "achievements". 
-        -- MODIFICATION: Changed "job_title" to "title" to match your template --
+    5.  `work_experience`: A list of objects. Each object represents a single job and MUST have these keys: "company", "from", "to", "title", "responsibility", and "achievements".
         - The "achievements" key MUST contain a list of strings (can be empty).
     6.  `education`: A list of objects, each with "degree", "graduation", "university", "university_location", "university_country" keys.
     7.  `hobbies`: A simple list of strings.
 
     ---
-    (The rest of your detailed rewriting rules remain the same)
-    ---
+
+    **Master Objective:** The final output must read like it was written by a human expert. It must be strategic, persuasive, and reflect the candidate as a high-impact individual in their field.
+
+    **Advanced Rewriting and Content Generation Rules:**
+
+    **1. Tone and Language (CRITICAL):**
+    - **Language:** Use British English.
+    - **Contextual Analysis:** First, analyze all input. If a job description is included, tailor the CV's language and skills towards that job.
+    - **Dynamic Tone Selection:** The user has selected the following tone: **'{tone_selection}'**. You MUST adapt your writing style accordingly.
+        - If 'Executive / Leadership', use authoritative and strategic language suitable for C-level or management roles.
+        - If 'Technical / Expert', focus on deep domain knowledge, specific technologies, and precise, data-driven language.
+        - If 'Sales / Commercial', use persuasive, energetic language focused on growth, revenue, and client relationships.
+    - **Final Polish:** It should be factual and confident, not boastful.
+
+    **2. Professional Summary (`summary_paragraphs`):**
+    - **Paragraph 1:** Start with a powerful "title-line" defining the candidate's professional identity (e.g., "Commercial Leader with 15 years of experience..."). Follow with their single most impressive, quantifiable achievement from their recent career. **Strictly adhere to a maximum of 310 characters (including spaces).** Be specific and concise.
+    - **Paragraph 2:** Write from the first-person ("I") perspective. Synthesize the candidate's core motivators and values. If no information is provided, create a strong, fitting paragraph based on their profile. **Strictly adhere to a maximum of 160 characters (including spaces).**
+
+    **3. Work Experience (`work_experience`):**
+    - **Responsibility:** Write 1-2 concise sentences defining the scope and core purpose of the role. Quantify it immediately if possible (e.g., "Managed a team of 12 and a P&L of €5M across the DACH region...").
+    - **Achievements:**
+        - **Result-by-Action Framework:** Each bullet point must focus on the result. The preferred format is: "I achieved [Result] by [implementing, leading, creating a specific action]."
+        - **Quantification:** Scour the input text for numbers, percentages, or scale indicators. **If numbers are present, you MUST use them.** If no numbers are present for an achievement, create a strong, descriptive, non-quantified achievement; do not invent numbers.
+        - **Number of Bullet Points:** Generate up to 3 achievement bullet points per job, depending on the richness of the input provided for that role.
+
+    **4. Negative Constraints (What to AVOID AT ALL COSTS):**
+    - **No Passive Voice:** Change "was responsible for" to "Managed," "Oversaw," etc.
+    - **NO BUZZWORDS:** Strictly avoid the following and similar empty phrases: seasoned, results-driven, dynamic, motivated, proven track record, passionate, innovative, creative thinker, strategic thinker, go-getter, self-starter, team player, leader of change, strong communicator, influencer, people-oriented, cross-functional collaborator, change agent. Demonstrate qualities, do not state them.
+
+    **Final Instruction:** If any information for a field is not found, use an empty string "" or an empty list []. Your entire output MUST be a single, valid JSON object and nothing else.
 
     CONSOLIDATED INPUT TEXT:
     ---
@@ -177,7 +208,6 @@ def run_the_app():
                 for i, exp in enumerate(work_experience):
                     st.subheader(f"Work Experience #{i+1}")
                     exp['company'] = st.text_input("Company", value=exp.get('company', ''), key=f"c_{i}")
-                    # MODIFICATION: Changed 'job_title' to 'title' to match your template
                     exp['title'] = st.text_input("Job Title", value=exp.get('title', ''), key=f"t_{i}")
                     col1, col2 = st.columns(2)
                     exp['from'] = col1.text_input("Start Date", value=exp.get('from', ''), key=f"from_{i}")
