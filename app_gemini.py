@@ -262,14 +262,18 @@ def run_the_app():
             submit_button = st.form_submit_button(label='📄 Generate Final Word Document')
 
         if submit_button:
-            # This logic builds the final context correctly
+            # --- THIS IS THE FINAL, CORRECTED LOGIC FOR BUILDING THE CONTEXT ---
             final_context = {}
             
             # Use .update() to flatten the personal_info into the main context
             final_context.update(data.get('personal_info', {}))
             
+            # Unpack the summary paragraphs into the individual keys the template expects
+            summary_paras = data.get('summary_paragraphs', ['',''])
+            final_context['summary_paragraph_1'] = summary_paras[0] if len(summary_paras) > 0 else ''
+            final_context['summary_paragraph_2'] = summary_paras[1] if len(summary_paras) > 1 else ''
+            
             # Add the other lists directly, applying slicing to enforce limits
-            final_context['summary_paragraphs'] = data.get('summary_paragraphs', [])
             final_context['skills'] = data.get('skills', [])[:6]
             final_context['hobbies'] = data.get('hobbies', [])[:6]
             final_context['languages'] = data.get('languages', [])[:6]
