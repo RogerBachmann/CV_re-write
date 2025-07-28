@@ -20,6 +20,7 @@ try:
     genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
     model = genai.GenerativeModel('gemini-1.5-flash')
 except Exception as e:
+    # This error will show on the login page if secrets are not set correctly.
     st.error("🔴 Critical Error: Cannot connect to AI service. Please contact the administrator.")
     st.stop()
 
@@ -42,7 +43,7 @@ def extract_text_from_file(uploaded_file):
 
 def parse_and_rewrite_cv(consolidated_text, tone_selection):
     """The main AI function that parses, rewrites, and returns structured JSON for loops."""
-    # This is the full, detailed prompt with all your rules.
+    # This is the final, most advanced prompt incorporating all your rules.
     prompt = f"""
     You are a Tier-1 executive career coach and CV writer, specializing in crafting documents for senior-level candidates targeting the Swiss, German, and Austrian markets. Your expertise is in transforming raw, informal career data into a polished, compelling, and strategically effective narrative.
 
@@ -75,19 +76,22 @@ def parse_and_rewrite_cv(consolidated_text, tone_selection):
         - 'Sales / Commercial': Use persuasive language focused on growth and revenue.
 
     **2. Professional Summary (`summary_paragraphs`):**
-    - **Paragraph 1:** Start with a powerful "title-line" defining the candidate. Follow with their single most impressive, quantifiable achievement. Max 310 characters.
-    - **Paragraph 2:** Write from the first-person ("I") perspective. Synthesize core motivators and values. Max 160 characters.
+    - **Paragraph 1 (Strictly Two Sentences):** This paragraph must consist of exactly two complete sentences. DO NOT use headline fragments or '|' separators.
+        - **Sentence 1:** Define the candidate's professional identity (e.g., "Commercial Leader with 15 years of experience in the premium cosmetics sector.").
+        - **Sentence 2:** State their single most impressive and quantifiable achievement from their recent career (e.g., "Most recently, drove regional growth by 18% through the implementation of a new sales training curriculum.").
+        - **The entire paragraph must not exceed 310 characters (including spaces).**
+    - **Paragraph 2:** Write from the first-person ("I") perspective. Synthesize the candidate's core motivators and values. If no information is provided, create a strong, fitting paragraph based on their profile. **Strictly adhere to a maximum of 160 characters (including spaces).**
 
     **3. Work Experience (`work_experience`):**
-    - **Responsibility:** Write 1-2 concise sentences defining the scope and core purpose of the role. Quantify if possible.
+    - **Responsibility:** Write 1-2 concise sentences defining the scope and core purpose of the role. Quantify it immediately if possible.
     - **Achievements:**
         - **Result-by-Action Framework:** "I achieved [Result] by [action]."
         - **Quantification:** Use numbers from the input text. If none are present, create a strong, descriptive, non-quantified achievement. Do not invent numbers.
         - **Number of Bullet Points:** Generate up to 3 achievement bullet points per job based on the input.
 
     **4. Negative Constraints (What to AVOID AT ALL COSTS):**
-    - **No Passive Voice.**
-    - **NO BUZZWORDS:** Strictly avoid: seasoned, results-driven, dynamic, motivated, passionate, innovative, strategic thinker, team player, etc. Demonstrate qualities, do not state them.
+    - **No Passive Voice:** Change "was responsible for" to "Managed," "Oversaw," etc.
+    - **NO BUZZWORDS:** Strictly avoid: seasoned, results-driven, dynamic, motivated, proven track record, passionate, innovative, creative thinker, strategic thinker, go-getter, self-starter, team player, leader of change, strong communicator, influencer, people-oriented, cross-functional collaborator, change agent, highly accomplished, expert in. Demonstrate qualities, do not state them.
 
     **Final Instruction:** If any information for a field is not found, use an empty string "" or an empty list []. Your entire output MUST be a single, valid JSON object and nothing else.
 
@@ -190,7 +194,7 @@ def run_the_app():
         data = st.session_state.cv_data
         
         with st.form(key='cv_template_form'):
-            # --- THIS IS THE FULL, RESTORED FORM ---
+            # --- THIS IS THE FULL, COMPLETE, AND CORRECTED FORM ---
             with st.expander("Personal Information", expanded=True):
                 p_info = data.get('personal_info', {})
                 p_info['NAME'] = st.text_input("Name", value=p_info.get('NAME', ''))
@@ -202,7 +206,8 @@ def run_the_app():
                 p_info['Linkedin'] = st.text_input("LinkedIn URL", value=p_info.get('Linkedin', ''))
             
             with st.expander("Professional Summary", expanded=True):
-                summary_paras = data.get('summary_paragraphs', ['',''])
+                summary_paras = data.get('summary_paragraphs', [])
+                while len(summary_paras) < 2: summary_paras.append('')
                 summary_paras[0] = st.text_area("Summary Paragraph 1", value=summary_paras[0], height=120)
                 summary_paras[1] = st.text_area("Summary Paragraph 2", value=summary_paras[1], height=80)
 
@@ -257,13 +262,13 @@ def run_the_app():
             submit_button = st.form_submit_button(label='📄 Generate Final Word Document')
 
         if submit_button:
-            # THIS IS THE CORRECTED LOGIC FOR BUILDING THE FINAL CONTEXT
+            # This logic builds the final context correctly
             final_context = {}
             
             # Use .update() to flatten the personal_info into the main context
             final_context.update(data.get('personal_info', {}))
             
-            # Add the other lists directly for the loops in the template
+            # Add the other lists directly, applying slicing to enforce limits
             final_context['summary_paragraphs'] = data.get('summary_paragraphs', [])
             final_context['skills'] = data.get('skills', [])[:6]
             final_context['hobbies'] = data.get('hobbies', [])[:6]
@@ -278,7 +283,7 @@ def run_the_app():
                     st.download_button(
                         label="⬇️ Download Final CV",
                         data=doc_buffer,
-                        file_name=f"CV_{data.get('personal_info',{}).get('NAME','candidate').replace(' ','_')}.docx"
+                        file_name=f"CV_{final_context.get('NAME','candidate').replace(' ','_')}.docx"
                     )
 
 # -------------------------------------
