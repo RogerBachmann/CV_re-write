@@ -43,7 +43,7 @@ def extract_text_from_file(uploaded_file):
 
 def parse_and_rewrite_cv(consolidated_text, tone_selection):
     """The main AI function that parses, rewrites, and returns structured JSON for loops."""
-    # THIS IS THE FULL, RESTORED PROMPT WITH ALL YOUR RULES AND CONSTRAINTS
+    # This is the full, detailed prompt with all your rules.
     prompt = f"""
     You are a Tier-1 executive career coach and CV writer, specializing in crafting documents for senior-level candidates targeting the Swiss, German, and Austrian markets. Your expertise is in transforming raw, informal career data into a polished, compelling, and strategically effective narrative.
 
@@ -69,27 +69,26 @@ def parse_and_rewrite_cv(consolidated_text, tone_selection):
 
     **1. Tone and Language (CRITICAL):**
     - **Language:** Use British English.
-    - **Contextual Analysis:** First, analyze all input. If a job description is included, tailor the CV's language and skills towards that job.
+    - **Contextual Analysis:** If a job description is included, tailor the CV's language and skills towards that job.
     - **Dynamic Tone Selection:** The user has selected the following tone: **'{tone_selection}'**. You MUST adapt your writing style accordingly.
-        - If 'Executive / Leadership', use authoritative and strategic language suitable for C-level or management roles.
-        - If 'Technical / Expert', focus on deep domain knowledge, specific technologies, and precise, data-driven language.
-        - If 'Sales / Commercial', use persuasive, energetic language focused on growth, revenue, and client relationships.
-    - **Final Polish:** It should be factual and confident, not boastful.
+        - 'Executive / Leadership': Use authoritative and strategic language.
+        - 'Technical / Expert': Focus on deep domain knowledge and specific technologies.
+        - 'Sales / Commercial': Use persuasive language focused on growth and revenue.
 
     **2. Professional Summary (`summary_paragraphs`):**
-    - **Paragraph 1:** Start with a powerful "title-line" defining the candidate's professional identity (e.g., "Commercial Leader with 15 years of experience..."). Follow with their single most impressive, quantifiable achievement from their recent career. **Strictly adhere to a maximum of 310 characters (including spaces).** Be specific and concise.
-    - **Paragraph 2:** Write from the first-person ("I") perspective. Synthesize the candidate's core motivators and values. If no information is provided, create a strong, fitting paragraph based on their profile. **Strictly adhere to a maximum of 160 characters (including spaces).**
+    - **Paragraph 1:** Start with a powerful "title-line" defining the candidate. Follow with their single most impressive, quantifiable achievement. Max 310 characters.
+    - **Paragraph 2:** Write from the first-person ("I") perspective. Synthesize core motivators and values. Max 160 characters.
 
     **3. Work Experience (`work_experience`):**
-    - **Responsibility:** Write 1-2 concise sentences defining the scope and core purpose of the role. Quantify it immediately if possible (e.g., "Managed a team of 12 and a P&L of €5M across the DACH region...").
+    - **Responsibility:** Write 1-2 concise sentences defining the scope and core purpose of the role. Quantify if possible.
     - **Achievements:**
-        - **Result-by-Action Framework:** Each bullet point must focus on the result. The preferred format is: "I achieved [Result] by [implementing, leading, creating a specific action]."
-        - **Quantification:** Scour the input text for numbers, percentages, or scale indicators. **If numbers are present, you MUST use them.** If no numbers are present for an achievement, create a strong, descriptive, non-quantified achievement; do not invent numbers.
-        - **Number of Bullet Points:** Generate up to 3 achievement bullet points per job, depending on the richness of the input provided for that role.
+        - **Result-by-Action Framework:** "I achieved [Result] by [action]."
+        - **Quantification:** Use numbers from the input text. If none are present, create a strong, descriptive, non-quantified achievement. Do not invent numbers.
+        - **Number of Bullet Points:** Generate up to 3 achievement bullet points per job based on the input.
 
     **4. Negative Constraints (What to AVOID AT ALL COSTS):**
-    - **No Passive Voice:** Change "was responsible for" to "Managed," "Oversaw," etc.
-    - **NO BUZZWORDS:** Strictly avoid the following and similar empty phrases: seasoned, results-driven, dynamic, motivated, proven track record, passionate, innovative, creative thinker, strategic thinker, go-getter, self-starter, team player, leader of change, strong communicator, influencer, people-oriented, cross-functional collaborator, change agent. Demonstrate qualities, do not state them.
+    - **No Passive Voice.**
+    - **NO BUZZWORDS:** Strictly avoid: seasoned, results-driven, dynamic, motivated, passionate, innovative, strategic thinker, team player, etc. Demonstrate qualities, do not state them.
 
     **Final Instruction:** If any information for a field is not found, use an empty string "" or an empty list []. Your entire output MUST be a single, valid JSON object and nothing else.
 
@@ -196,8 +195,12 @@ def run_the_app():
                 p_info = data.get('personal_info', {})
                 p_info['NAME'] = st.text_input("Name", value=p_info.get('NAME', ''))
                 p_info['JOB_TITLE'] = st.text_input("Overall Job Title", value=p_info.get('JOB_TITLE', ''))
-                # Other personal fields...
-
+                p_info['phone'] = st.text_input("Phone", value=p_info.get('phone', ''))
+                p_info['email'] = st.text_input("Email", value=p_info.get('email', ''))
+                p_info['city'] = st.text_input("City", value=p_info.get('city', ''))
+                p_info['zip'] = st.text_input("ZIP Code", value=p_info.get('zip', ''))
+                p_info['Linkedin'] = st.text_input("LinkedIn URL", value=p_info.get('Linkedin', ''))
+            
             with st.expander("Professional Summary", expanded=True):
                 summary_paras = data.get('summary_paragraphs', ['',''])
                 summary_paras[0] = st.text_area("Summary Paragraph 1", value=summary_paras[0], height=120)
@@ -217,14 +220,35 @@ def run_the_app():
                     updated_achievements = st.text_area("Achievements (one per line)", value=achievements_text, height=100, key=f"ach_{i}")
                     exp['achievements'] = [line.strip() for line in updated_achievements.split('\n') if line.strip()]
                     st.markdown("---")
+
+            with st.expander("Education"):
+                 education = data.get('education', [])
+                 for i, edu in enumerate(education):
+                    st.subheader(f"Education #{i+1}")
+                    edu['degree'] = st.text_input("Degree", value=edu.get('degree',''), key=f"deg_{i}")
+                    edu['graduation'] = st.text_input("Graduation Year", value=edu.get('graduation',''), key=f"grad_{i}")
+                    edu['university'] = st.text_input("University", value=edu.get('university',''), key=f"uni_{i}")
+                    #... and so on for other education fields
             
-            # Additional expanders for Education, Skills, etc. can be added here if needed for editing.
+            # ... additional expanders for skills, languages, etc. if you want to edit them ...
 
             submit_button = st.form_submit_button(label='📄 Generate Final Word Document')
 
         if submit_button:
-            # The context building is now very simple. We just pass the entire 'data' dictionary.
-            final_context = data
+            # THIS IS THE CORRECTED LOGIC WITH ITEM LIMITS
+            final_context = {}
+            
+            # Copy over single-item data
+            final_context['personal_info'] = data.get('personal_info', {})
+            final_context['summary_paragraphs'] = data.get('summary_paragraphs', [])
+
+            # Copy and slice the lists to enforce maximums
+            final_context['skills'] = data.get('skills', [])[:6]
+            final_context['hobbies'] = data.get('hobbies', [])[:6]
+            final_context['languages'] = data.get('languages', [])[:6]
+            final_context['education'] = data.get('education', [])[:6]
+            final_context['work_experience'] = data.get('work_experience', [])[:15]
+            
             with st.spinner("Creating your polished Word document..."):
                 doc_buffer = generate_word_document(final_context)
                 if doc_buffer:
