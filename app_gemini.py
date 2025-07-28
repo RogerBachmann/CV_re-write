@@ -47,7 +47,7 @@ def parse_and_rewrite_cv(consolidated_text, tone_selection):
     prompt = f"""
     You are a Tier-1 executive career coach and CV writer, specializing in crafting documents for senior-level candidates targeting the Swiss, German, and Austrian markets. Your expertise is in transforming raw, informal career data into a polished, compelling, and strategically effective narrative.
 
-    Your task is to analyze the CONSOLIDATED INPUT TEXT provided below. You must first synthesize all this information, then professionally rewrite the content according to the detailed rules below, and finally return the data as a single, clean JSON object.
+    Your task is to follow a strict two-pass process. First, meticulously analyze the CONSOLIDATED INPUT TEXT to identify every single piece of data. Second, professionally rewrite the content according to the detailed rules below, and finally return the data as a single, clean JSON object.
 
     **JSON Structure Requirements (Strictly follow this for looping):**
     The root JSON object must contain these keys: "personal_info", "summary_paragraphs", "languages", "skills", "work_experience", "education", "hobbies".
@@ -63,7 +63,10 @@ def parse_and_rewrite_cv(consolidated_text, tone_selection):
 
     ---
 
-    **Master Objective:** The final output must read like it was written by a human expert. It must be strategic, persuasive, and reflect the candidate as a high-impact individual in their field.
+    **Master Objective:** The final output must be a complete and accurate representation of the input data, written as if by a human expert. It must be strategic, persuasive, and reflect the candidate as a high-impact individual in their field.
+
+    **Critical Process Rule: Data Extraction First**
+    Before any rewriting, your first priority is to scan the entire input and identify ALL distinct entries for work experience, education, skills, languages, and hobbies. Do not omit any entries. Ensure every job and every degree found in the source text has a corresponding object in the final JSON.
 
     **Advanced Rewriting and Content Generation Rules:**
 
@@ -262,7 +265,7 @@ def run_the_app():
             submit_button = st.form_submit_button(label='📄 Generate Final Word Document')
 
         if submit_button:
-            # --- THIS IS THE FINAL, CORRECTED LOGIC FOR BUILDING THE CONTEXT ---
+            # THIS IS THE FINAL, CORRECTED LOGIC FOR BUILDING THE CONTEXT
             final_context = {}
             
             # Use .update() to flatten the personal_info into the main context
