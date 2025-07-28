@@ -40,30 +40,56 @@ def extract_text_from_file(uploaded_file):
         st.error(f"Error reading file: {uploaded_file.name}")
     return ""
 
-def parse_and_rewrite_cv(consolidated_text):
+def parse_and_rewrite_cv(consolidated_text, tone_selection):
     """The main AI function that parses, rewrites, and returns structured JSON."""
     prompt = f"""
-    You are an expert CV analyst and data extractor. Your task is to parse the CONSOLIDATED INPUT TEXT provided below, which may contain information from multiple documents (like a CV, a cover letter, and notes). Professionally rewrite the content in a senior, executive tone, and return the data as a single, clean JSON object that matches a specific template structure.
+    You are a Tier-1 executive career coach and CV writer, specializing in crafting documents for senior-level candidates targeting the Swiss, German, and Austrian markets. Your expertise is in transforming raw, informal career data into a polished, compelling, and strategically effective narrative.
 
-    **JSON Structure Requirements:**
+    Your task is to analyze the CONSOLIDATED INPUT TEXT provided below. This text may contain a mix of information from a CV, a cover letter, a target job description, and personal notes. You must first synthesize all this information, then professionally rewrite the content according to the detailed rules below, and finally return the data as a single, clean JSON object.
+
+    **JSON Structure Requirements (Strictly follow this):**
     The root JSON object must contain these keys: "personal_info", "summary_paragraphs", "languages", "skills", "work_experience", "education", "hobbies".
 
     1.  `personal_info`: An object with keys "NAME", "JOB_TITLE", "phone", "email", "city", "zip", "Linkedin".
-    2.  `summary_paragraphs`: A list of strings, containing exactly two paragraphs for the summary.
+    2.  `summary_paragraphs`: A list of strings, containing exactly two paragraphs.
     3.  `languages`: A list of objects, each with "language" and "level". Provide up to 3.
-    4.  `skills`: A list of strings for skills. Provide up to 3.
-    5.  `work_experience`: A list of objects. Each object must have keys: "company", "from", "to", "job_title", "responsibility", and "achievements".
-        - `achievements` MUST be a list of strings, containing exactly 3 achievement points.
-    6.  `education`: A list of objects, each with "degree", "graduation", "university", "university_location", "university_country". Provide up to 2.
+    4.  `skills`: A list of strings for skills. Provide up to 6.
+    5.  `work_experience`: A list of objects. Each object must have keys: "company", "from", "to", "job_title", "responsibility", and "achievements". Provide up to 15 entries.
+        - `achievements` MUST be a list of strings. Provide up to 3 achievement points per job, based on the input.
+    6.  `education`: A list of objects, each with "degree", "graduation", "university", "university_location", "university_country". Provide up to 6.
     7.  `hobbies`: A list of strings for hobbies. Provide up to 3.
 
-    **Rewriting Rules:**
-    - Synthesize information from all parts of the input to create the best possible profile.
-    - Rewrite job descriptions to be achievement-focused using the STAR method.
-    - Quantify scope and impact wherever possible.
-    - Use a direct, precise, and senior tone in British English.
-    - If information for any field is not found, use an empty string "" or an empty list [].
-    - Your entire output MUST be a single, valid JSON object and nothing else.
+    ---
+
+    **Master Objective:** The final output must read like it was written by a human expert. It must be strategic, persuasive, and reflect the candidate as a high-impact individual in their field.
+
+    **Advanced Rewriting and Content Generation Rules:**
+
+    **1. Tone and Language (CRITICAL):**
+    - **Language:** Use British English.
+    - **Contextual Analysis:** First, analyze all input. If a job description is included, tailor the CV's language and skills towards that job.
+    - **Dynamic Tone Selection:** The user has selected the following tone: **'{tone_selection}'**. You MUST adapt your writing style accordingly.
+        - If 'Executive / Leadership', use authoritative and strategic language suitable for C-level or management roles.
+        - If 'Technical / Expert', focus on deep domain knowledge, specific technologies, and precise, data-driven language.
+        - If 'Sales / Commercial', use persuasive, energetic language focused on growth, revenue, and client relationships.
+    - **Final Polish:** It should be factual and confident, not boastful.
+
+    **2. Professional Summary (`summary_paragraphs`):**
+    - **Paragraph 1:** Start with a powerful "title-line" defining the candidate's professional identity (e.g., "Commercial Leader with 15 years of experience..."). Follow with their single most impressive, quantifiable achievement from their recent career. **Strictly adhere to a maximum of 310 characters (including spaces).** Be specific and concise.
+    - **Paragraph 2:** Write from the first-person ("I") perspective. Synthesize the candidate's core motivators and values. If no information is provided, create a strong, fitting paragraph based on their profile. **Strictly adhere to a maximum of 160 characters (including spaces).**
+
+    **3. Work Experience (`work_experience`):**
+    - **Responsibility:** Write 1-2 concise sentences defining the scope and core purpose of the role. Quantify it immediately if possible (e.g., "Managed a team of 12 and a P&L of €5M across the DACH region...").
+    - **Achievements:**
+        - **Result-by-Action Framework:** Each bullet point must focus on the result. The preferred format is: "I achieved [Result] by [implementing, leading, creating a specific action]."
+        - **Quantification:** Scour the input text for numbers, percentages, or scale indicators. **If numbers are present, you MUST use them.** If no numbers are present for an achievement, create a strong, descriptive, non-quantified achievement; do not invent numbers.
+        - **Number of Bullet Points:** Generate up to 3 achievement bullet points per job, depending on the richness of the input provided for that role.
+
+    **4. Negative Constraints (What to AVOID AT ALL COSTS):**
+    - **No Passive Voice:** Change "was responsible for" to "Managed," "Oversaw," etc.
+    - **NO BUZZWORDS:** Strictly avoid the following and similar empty phrases: seasoned, results-driven, dynamic, motivated, proven track record, passionate, innovative, creative thinker, strategic thinker, go-getter, self-starter, team player, leader of change, strong communicator, influencer, people-oriented, cross-functional collaborator, change agent. Demonstrate qualities, do not state them.
+
+    **Final Instruction:** If information for any field is not found, use an empty string "" or an empty list []. Your entire output MUST be a single, valid JSON object and nothing else.
 
     CONSOLIDATED INPUT TEXT:
     ---
@@ -111,6 +137,14 @@ def run_the_app():
     )
     free_text_input = st.text_area("Paste any additional notes, text, or ideas here:", height=150)
 
+    # NEW: Tone selection dropdown menu
+    st.subheader("Select the Desired Tone")
+    tone_selection = st.selectbox(
+        "Choose the tone that best fits the target role:",
+        ("Executive / Leadership", "Technical / Expert", "Sales / Commercial", "General Professional"),
+        label_visibility="collapsed"
+    )
+
     if st.button("🚀 Analyse All Info & Fill Form"):
         all_texts = []
         if uploaded_files:
@@ -125,7 +159,8 @@ def run_the_app():
         else:
             consolidated_text = "\n\n--- DOCUMENT SEPARATOR ---\n\n".join(all_texts)
             with st.spinner("🤖 Gemini is synthesizing all info, rewriting, and structuring the CV..."):
-                st.session_state.cv_data = parse_and_rewrite_cv(consolidated_text)
+                # MODIFIED: Pass the tone_selection to the function
+                st.session_state.cv_data = parse_and_rewrite_cv(consolidated_text, tone_selection)
 
     if st.session_state.cv_data:
         st.success("✅ Success! The form below is now filled. Review the content before generating the document.")
@@ -138,10 +173,13 @@ def run_the_app():
                 p_info = data.get('personal_info', {})
                 p_info['NAME'] = st.text_input("Name (NAME)", value=p_info.get('NAME', ''))
                 p_info['JOB_TITLE'] = st.text_input("Job Title (JOB_TITLE)", value=p_info.get('JOB_TITLE', ''))
-                # (The rest of the form is identical to the last complete version)
-                
-            # ... All your other form expanders go here (Summary, Work Exp, etc.)
-            # --- This is the full form code from the previous working version ---
+                col1, col2, col3, col4 = st.columns(4)
+                p_info['phone'] = col1.text_input("Phone (phone)", value=p_info.get('phone', ''))
+                p_info['email'] = col2.text_input("Email (email)", value=p_info.get('email', ''))
+                p_info['city'] = col3.text_input("City (city)", value=p_info.get('city', ''))
+                p_info['zip'] = col4.text_input("ZIP Code (zip)", value=p_info.get('zip', ''))
+                p_info['Linkedin'] = st.text_input("LinkedIn URL (Linkedin)", value=p_info.get('Linkedin', ''))
+
             with st.expander("Professional Summary", expanded=True):
                 summary_paras = data.get('summary_paragraphs', [])
                 while len(summary_paras) < 2: summary_paras.append('')
@@ -150,7 +188,8 @@ def run_the_app():
 
             with st.expander("Work Experience", expanded=True):
                 work_experience = data.get('work_experience', [])
-                for i, exp in enumerate(work_experience):
+                # NEW: Limit the number of experience entries displayed to 15
+                for i, exp in enumerate(work_experience[:15]):
                     st.subheader(f"Work Experience #{i+1}")
                     exp['company'] = st.text_input(f"Company", value=exp.get('company', ''), key=f"c_{i}")
                     exp['job_title'] = st.text_input(f"Job Title", value=exp.get('job_title', ''), key=f"t_{i}")
@@ -170,8 +209,9 @@ def run_the_app():
             with col1:
                 with st.expander("Skills"):
                     skills = data.get('skills', [])
-                    while len(skills) < 3: skills.append('')
-                    for i in range(3): skills[i] = st.text_input(f"Skill {i+1}", value=skills[i], key=f"skill_{i}")
+                    # NEW: Expand skills to handle up to 6
+                    while len(skills) < 6: skills.append('')
+                    for i in range(6): skills[i] = st.text_input(f"Skill {i+1}", value=skills[i], key=f"skill_{i}")
             with col2:
                 with st.expander("Languages"):
                     languages = data.get('languages', [])
@@ -184,8 +224,9 @@ def run_the_app():
             
             with st.expander("Education & Qualifications"):
                 education = data.get('education', [])
-                while len(education) < 2: education.append({})
-                for i, edu in enumerate(education):
+                # NEW: Expand education to handle up to 6
+                while len(education) < 6: education.append({})
+                for i, edu in enumerate(education[:6]):
                     st.subheader(f"Education #{i+1}")
                     edu['degree'] = st.text_input(f"Degree", value=edu.get('degree',''), key=f"deg_{i}")
                     edu['graduation'] = st.text_input(f"Graduation Year", value=edu.get('graduation',''), key=f"grad_{i}")
@@ -203,13 +244,13 @@ def run_the_app():
             submit_button = st.form_submit_button(label='📄 Generate Final Word Document')
 
         if submit_button:
+            # This logic remains largely the same, but now respects the larger number of items
             final_context = {}
             final_context.update(data.get('personal_info', {}))
             summary_paras = data.get('summary_paragraphs', ['',''])
             final_context['summary_paragraph_1'] = summary_paras[0]
             final_context['summary_paragraph_2'] = summary_paras[1]
-            # ... and the rest of the context-building logic ...
-            for i, exp in enumerate(data.get('work_experience', [])):
+            for i, exp in enumerate(data.get('work_experience', [])[:15]):
                 final_context[f'company_{i+1}'] = exp.get('company')
                 final_context[f'from_{i+1}'] = exp.get('from')
                 final_context[f'to_{i+1}'] = exp.get('to')
@@ -217,18 +258,18 @@ def run_the_app():
                 final_context[f'responsibility_{i+1}'] = exp.get('responsibility')
                 for j, ach in enumerate(exp.get('achievements', [])):
                     final_context[f'achievement_job_{i+1}_{j+1}'] = ach
-            for i, lang in enumerate(data.get('languages', [])):
+            for i, lang in enumerate(data.get('languages', [])[:3]):
                 final_context[f'language_{i+1}'] = lang.get('language')
                 final_context[f'level_{i+1}'] = lang.get('level')
-            for i, skill in enumerate(data.get('skills', [])):
+            for i, skill in enumerate(data.get('skills', [])[:6]):
                 final_context[f'skill_{i+1}'] = skill
-            for i, edu in enumerate(data.get('education', [])):
+            for i, edu in enumerate(data.get('education', [])[:6]):
                 final_context[f'degree_{i+1}'] = edu.get('degree')
                 final_context[f'graduation_{i+1}'] = edu.get('graduation')
                 final_context[f'university_{i+1}'] = edu.get('university')
                 final_context[f'university_location_{i+1}'] = edu.get('university_location')
                 final_context[f'university_country_{i+1}'] = edu.get('university_country')
-            for i, hobby in enumerate(data.get('hobbies', [])):
+            for i, hobby in enumerate(data.get('hobbies', [])[:3]):
                 final_context[f'hobby_{i+1}'] = hobby
 
             with st.spinner("Creating your polished Word document..."):
@@ -248,11 +289,8 @@ def run_the_app():
 def check_password():
     """Returns `True` if the user entered the correct password."""
     try:
-        # The password input form
         st.title("🔐 Secure Access")
         password = st.text_input("Please enter the password to access the tool:", type="password")
-
-        # Check if the password is correct by comparing with the secret
         if password == st.secrets["APP_PASSWORD"]:
             return True
         elif password != "":
