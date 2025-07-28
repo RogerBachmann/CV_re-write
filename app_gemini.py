@@ -20,7 +20,6 @@ try:
     genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
     model = genai.GenerativeModel('gemini-1.5-flash')
 except Exception as e:
-    # This error will show on the login page if secrets are not set correctly.
     st.error("🔴 Critical Error: Cannot connect to AI service. Please contact the administrator.")
     st.stop()
 
@@ -191,7 +190,7 @@ def run_the_app():
         data = st.session_state.cv_data
         
         with st.form(key='cv_template_form'):
-            # --- THIS IS THE FULL, COMPLETE FORM ---
+            # --- THIS IS THE FULL, RESTORED FORM ---
             with st.expander("Personal Information", expanded=True):
                 p_info = data.get('personal_info', {})
                 p_info['NAME'] = st.text_input("Name", value=p_info.get('NAME', ''))
@@ -203,8 +202,7 @@ def run_the_app():
                 p_info['Linkedin'] = st.text_input("LinkedIn URL", value=p_info.get('Linkedin', ''))
             
             with st.expander("Professional Summary", expanded=True):
-                summary_paras = data.get('summary_paragraphs', [])
-                while len(summary_paras) < 2: summary_paras.append('')
+                summary_paras = data.get('summary_paragraphs', ['',''])
                 summary_paras[0] = st.text_area("Summary Paragraph 1", value=summary_paras[0], height=120)
                 summary_paras[1] = st.text_area("Summary Paragraph 2", value=summary_paras[1], height=80)
 
@@ -259,8 +257,13 @@ def run_the_app():
             submit_button = st.form_submit_button(label='📄 Generate Final Word Document')
 
         if submit_button:
+            # THIS IS THE CORRECTED LOGIC FOR BUILDING THE FINAL CONTEXT
             final_context = {}
-            final_context['personal_info'] = data.get('personal_info', {})
+            
+            # Use .update() to flatten the personal_info into the main context
+            final_context.update(data.get('personal_info', {}))
+            
+            # Add the other lists directly for the loops in the template
             final_context['summary_paragraphs'] = data.get('summary_paragraphs', [])
             final_context['skills'] = data.get('skills', [])[:6]
             final_context['hobbies'] = data.get('hobbies', [])[:6]
