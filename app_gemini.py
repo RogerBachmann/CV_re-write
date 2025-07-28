@@ -191,6 +191,7 @@ def run_the_app():
         data = st.session_state.cv_data
         
         with st.form(key='cv_template_form'):
+            # --- THIS IS THE FULL, COMPLETE FORM ---
             with st.expander("Personal Information", expanded=True):
                 p_info = data.get('personal_info', {})
                 p_info['NAME'] = st.text_input("Name", value=p_info.get('NAME', ''))
@@ -202,7 +203,8 @@ def run_the_app():
                 p_info['Linkedin'] = st.text_input("LinkedIn URL", value=p_info.get('Linkedin', ''))
             
             with st.expander("Professional Summary", expanded=True):
-                summary_paras = data.get('summary_paragraphs', ['',''])
+                summary_paras = data.get('summary_paragraphs', [])
+                while len(summary_paras) < 2: summary_paras.append('')
                 summary_paras[0] = st.text_area("Summary Paragraph 1", value=summary_paras[0], height=120)
                 summary_paras[1] = st.text_area("Summary Paragraph 2", value=summary_paras[1], height=80)
 
@@ -221,28 +223,45 @@ def run_the_app():
                     exp['achievements'] = [line.strip() for line in updated_achievements.split('\n') if line.strip()]
                     st.markdown("---")
 
-            with st.expander("Education"):
-                 education = data.get('education', [])
-                 for i, edu in enumerate(education):
+            with st.expander("Education & Qualifications"):
+                education = data.get('education', [])
+                while len(education) < 6: education.append({})
+                for i, edu in enumerate(education[:6]):
                     st.subheader(f"Education #{i+1}")
                     edu['degree'] = st.text_input("Degree", value=edu.get('degree',''), key=f"deg_{i}")
                     edu['graduation'] = st.text_input("Graduation Year", value=edu.get('graduation',''), key=f"grad_{i}")
                     edu['university'] = st.text_input("University", value=edu.get('university',''), key=f"uni_{i}")
-                    #... and so on for other education fields
+                    c1,c2 = st.columns(2)
+                    edu['university_location'] = c1.text_input("Location", value=edu.get('university_location',''), key=f"uniloc_{i}")
+                    edu['university_country'] = c2.text_input("Country", value=edu.get('university_country',''), key=f"unicoun_{i}")
             
-            # ... additional expanders for skills, languages, etc. if you want to edit them ...
+            col1, col2 = st.columns(2)
+            with col1:
+                with st.expander("Skills"):
+                    skills = data.get('skills', [])
+                    while len(skills) < 6: skills.append('')
+                    for i in range(6): skills[i] = st.text_input(f"Skill {i+1}", value=skills[i], key=f"skill_{i}")
+            with col2:
+                with st.expander("Languages"):
+                    languages = data.get('languages', [])
+                    while len(languages) < 6: languages.append({'language':'', 'level':''})
+                    for i in range(6):
+                        lang_obj = languages[i]
+                        c1, c2 = st.columns(2)
+                        lang_obj['language'] = c1.text_input(f"Language {i+1}", value=lang_obj.get('language',''), key=f"lang_{i}")
+                        lang_obj['level'] = c2.text_input(f"Level {i+1}", value=lang_obj.get('level',''), key=f"level_{i}")
+
+            with st.expander("Hobbies & Extracurricular"):
+                hobbies = data.get('hobbies', [])
+                while len(hobbies) < 6: hobbies.append('')
+                for i in range(6): hobbies[i] = st.text_input(f"Hobby {i+1}", value=hobbies[i], key=f"hobby_{i}")
 
             submit_button = st.form_submit_button(label='📄 Generate Final Word Document')
 
         if submit_button:
-            # THIS IS THE CORRECTED LOGIC WITH ITEM LIMITS
             final_context = {}
-            
-            # Copy over single-item data
             final_context['personal_info'] = data.get('personal_info', {})
             final_context['summary_paragraphs'] = data.get('summary_paragraphs', [])
-
-            # Copy and slice the lists to enforce maximums
             final_context['skills'] = data.get('skills', [])[:6]
             final_context['hobbies'] = data.get('hobbies', [])[:6]
             final_context['languages'] = data.get('languages', [])[:6]
