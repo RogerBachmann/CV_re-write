@@ -394,34 +394,38 @@ def run_the_app():
 
 
 # -------------------------------------
-# 5. PASSWORD CHECK
+# 5. PASSWORD CHECK (Corrected Version)
 # -------------------------------------
 def check_password():
     """Returns `True` if the user entered the correct password."""
     try:
-        # Check if the password is correct
-        if "password_correct" not in st.session_state:
-            st.session_state.password_correct = False
-
-        if st.session_state.password_correct:
+        # Check if the password has already been verified in the current session.
+        if st.session_state.get("password_correct", False):
             return True
 
-        # Show password input
+        # If not verified, display the password input form.
         st.title("🔐 Secure Access")
-        password = st.text_input("Please enter the password to access the tool:", type="password")
+        password = st.text_input("Please enter the password to access the tool:", type="password", key="password_input")
 
-        # Use st.secrets for password storage
-        if password == st.secrets["APP_PASSWORD"]:
+        # Use st.secrets for password storage comparison.
+        correct_password = st.secrets.get("APP_PASSWORD")
+        if not correct_password:
+             st.error("🔴 Critical Error: Application password is not configured in st.secrets. Please contact the administrator.")
+             return False
+
+        if password == correct_password:
             st.session_state.password_correct = True
-            st.experimental_rerun() # Rerun to remove the password field
-        elif password != "":
+            # This is the corrected line:
+            st.rerun() # Use the modern `st.rerun()` to reload the app state.
+        elif password: # If the user has entered any password and it's wrong
             st.error("Password incorrect. Please try again.")
-        else:
+        else: # If the field is empty
             st.info("A password is required to use this application.")
+        
         return False
 
-    except KeyError:
-        st.error("🔴 Critical Error: Application password is not configured in st.secrets. Please contact the administrator.")
+    except Exception as e:
+        st.error(f"🔴 An unexpected error occurred in the password check function: {e}")
         return False
 
 # --- Main script execution ---
