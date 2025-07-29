@@ -9,15 +9,14 @@ from docx import Document
 from docxtpl import DocxTemplate
 import io
 import json
-from xml.sax.saxutils import escape
 import re
+from xml.sax.saxutils import escape
 
 # -------------------------------------
 # 2. GEMINI API CONFIGURATION
 # -------------------------------------
 st.set_page_config(layout="wide", page_title="Swiss CV Enhancer")
 try:
-    # Use st.secrets for secure API key storage in Streamlit Cloud
     genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
     model = genai.GenerativeModel('gemini-1.5-flash')
 except Exception as e:
@@ -32,11 +31,9 @@ def extract_text_from_file(uploaded_file):
     """Extracts text from an uploaded PDF or DOCX file."""
     try:
         if uploaded_file.type == "application/pdf":
-            # Using pdfplumber to handle PDFs
             with pdfplumber.open(uploaded_file) as pdf:
                 return "\n".join([page.extract_text() for page in pdf.pages if page.extract_text()])
         elif uploaded_file.type == "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
-            # Using python-docx to handle DOCX
             doc = Document(uploaded_file)
             return "\n".join([para.text for para in doc.paragraphs])
     except Exception as e:
@@ -44,26 +41,15 @@ def extract_text_from_file(uploaded_file):
     return ""
 
 def robust_json_parser(raw_text_from_ai):
-    """
-    A more robust JSON parser that handles common AI errors like code block fences
-    and illegal trailing commas.
-    """
+    """A more robust JSON parser that handles common AI errors."""
     try:
-        # Clean the text by removing markdown code block fences (```json ... ```)
         clean_text = re.sub(r'^```json\s*|```\s*$', '', raw_text_from_ai.strip())
-
-        # Attempt to find the main JSON object
         start = clean_text.find('{')
         end = clean_text.rfind('}') + 1
         if start == -1 or end == 0:
             raise ValueError("JSON object not found in the AI response.")
-
         clean_json_text = clean_text[start:end]
-
-        # FIX: Specifically remove illegal trailing commas from objects and arrays
-        # This regex finds a comma, followed by optional whitespace, right before a closing brace '}' or bracket ']'
         clean_json_text = re.sub(r',\s*([}\]])', r'\1', clean_json_text)
-
         return json.loads(clean_json_text)
     except (ValueError, json.JSONDecodeError) as e:
         st.error(f"🔴 Error: Could not parse the AI's response as valid JSON. Details: {e}")
@@ -71,23 +57,23 @@ def robust_json_parser(raw_text_from_ai):
         return None
 
 def extract_raw_data(consolidated_text):
-    """AI Step 1: Purely extracts data from text into a JSON structure. No rewriting."""
-    # This is the stable, focused extraction prompt.
+    """
+    AI STEP 1: Purely extracts raw data from text into a JSON structure.
+    This step does no rewriting and uses a simple, reliable prompt.
+    """
     prompt = f"""
-    You are a data extraction engine. Your sole purpose is to read the following text and extract all relevant information into a clean, valid JSON object. Do NOT rewrite, embellish, or change any of the text. Focus on complete and accurate extraction.
+    You are a data extraction engine. Your sole purpose is to read the following text and extract all relevant information into a clean, valid JSON object. Do NOT rewrite, embellish, or change any of the text. Focus on complete and accurate extraction. Use British English for any location names if variants exist.
 
     **JSON Structure Requirements:**
-    The root JSON object must contain these keys: "personal_info", "summary_paragraphs", "languages", "skills", "work_experience", "education", "hobbies".
-
-    1.  `personal_info`: Extract "name", "job_title", "phone", "email", "city", "zip_code", "linkedin_url".
+    1.  `personal_info`: Extract "name", "job_title" (from the CV), "phone", "email", "city", "zip", "country", "linkedin_url".
     2.  `summary_paragraphs`: Extract any summary or "about me" paragraphs as a list of strings.
-    3.  `languages`: Extract all languages and their proficiency levels into a list of objects, each with "language" and "level" keys. Example: [{{"language": "German", "level": "Native"}}, {{"language": "English", "level": "Fluent"}}]
+    3.  `languages`: Extract all languages and their proficiency levels into a list of objects, each with "language" and "level" keys.
     4.  `skills`: Extract all distinct skills into a simple list of strings.
-    5.  `work_experience`: Extract EVERY job entry. Each must be an object with "company", "location", "from_date", "to_date", "job_title", "responsibilities" (as a single string), and "achievements" (as a list of strings).
-    6.  `education`: Extract EVERY educational entry into a list of objects. Each should have "institution", "degree", "grad_year", and "details".
+    5.  `work_experience`: Extract EVERY job entry. Each must be an object with "company", "from_date", "to_date", "job_title", "responsibility", and "achievements" (as a list of strings).
+    6.  `education`: Extract EVERY educational entry. Each must be an object with "degree", "graduation_date", "university", "university_location", "university_country".
     7.  `hobbies`: Extract all hobbies into a simple list of strings.
 
-    If information for a key is not found, use an empty string "" or an empty list []. Your entire output must be ONLY the JSON object, without any surrounding text or markdown.
+    If information for a key is not found, use an empty string "" or an empty list []. Your entire output must be ONLY the JSON object.
 
     CONSOLIDATED INPUT TEXT:
     ---
@@ -97,7 +83,7 @@ def extract_raw_data(consolidated_text):
     try:
         response = model.generate_content(prompt)
         if not response.parts:
-            st.error("🔴 AI Extractor Error: The response was empty. The input might be too complex or trigger a safety filter.")
+            st.error("🔴 AI Extractor Error: The response was empty.")
             return None
         return robust_json_parser(response.text)
     except Exception as e:
@@ -105,43 +91,77 @@ def extract_raw_data(consolidated_text):
         return None
 
 def rewrite_extracted_data(extracted_data, tone_selection):
-    """AI Step 2: Takes clean JSON and rewrites the content according to expert rules."""
-    # This is our full, detailed, expert rewriting prompt.
+    """
+    AI STEP 2: Takes clean JSON and rewrites it using your non-negotiable expert prompt.
+    """
     prompt = f"""
-    You are a Tier-1 executive career coach and CV writer for the Swiss market. Your task is to take the following CLEAN JSON CV DATA and rewrite ONLY the text values (`summary_paragraphs`, `responsibilities`, `achievements`) to be world-class.
-    Do NOT change the structure of the JSON. The output must be the complete, rewritten JSON object and nothing else.
+    You are a Tier-1 executive career coach and CV writer, specializing in crafting documents for senior-level candidates targeting the Swiss market. Your expertise is in transforming raw, informal career data into a polished, compelling, and strategically effective narrative.
 
-    **Advanced Rewriting Rules based on Tone: {tone_selection}**
+    Your task is to analyze the provided CLEAN JSON DATA below. You must first synthesize all this information, then professionally rewrite the content according to the detailed rules, and finally return the data as a single, clean JSON object.
 
-    1.  **Professional Summary (`summary_paragraphs`):**
-        *   Rewrite into two powerful paragraphs.
-        *   **First Paragraph:** Start with the `{tone_selection}` job title. Weave in the top 2-3 areas of expertise and mention years of experience. State the primary value proposition.
-        *   **Second Paragraph:** Showcase key achievements with quantifiable results (use metrics like %, CHF, project duration). Connect these achievements to core competencies. Mention key industries (e.g., Pharma, Banking, Tech).
-        *   **Tone:** Use strong, confident, and professional language appropriate for the Swiss market. Avoid clichés.
-
-    2.  **Work Experience (`responsibilities` and `achievements`):**
-        *   **Responsibilities (`responsibilities`):** Transform the provided text into a concise, powerful paragraph. Focus on the scope and key duties, incorporating relevant keywords for the `{tone_selection}` field.
-        *   **Achievements (`achievements`):** This is critical. Rewrite each achievement to follow the STAR method (Situation, Task, Action, Result).
-            *   **Action Verbs:** Start every bullet point with a powerful action verb (e.g., "Orchestrated", "Engineered", "Spearheaded", "Negotiated", "Delivered").
-            *   **Quantify Everything:** Add metrics wherever possible. If numbers aren't present, you can use phrases like "resulting in significant cost savings" or "enhancing team efficiency by a notable margin," but always prefer concrete numbers.
-            *   **Focus on Impact:** Clearly state the benefit to the business (e.g., "...reducing operational costs by 15%", "...which increased customer retention by 10%").
-
-    3.  **General Rules:**
-        *   **Buzzwords:** Integrate relevant buzzwords for a `{tone_selection}` role in Switzerland (e.g., 'digital transformation', 'agile methodologies', 'stakeholder management', 'cross-functional leadership', 'data-driven decision-making').
-        *   **Clarity & Conciseness:** Ensure the final text is clear, direct, and professional. Remove any fluff or passive language.
-        *   **Consistency:** Maintain the selected `{tone_selection}` tone throughout the document.
-
-    Your final output must be ONLY the modified JSON object. Do not add any commentary.
-
-    CLEAN JSON CV DATA TO REWRITE:
+    CLEAN JSON DATA (FROM STEP 1):
     ---
     {json.dumps(extracted_data, indent=2)}
     ---
+
+    **JSON Structure Requirements for FINAL OUTPUT (Strictly follow this for looping):**
+    The root JSON object must contain these keys: "personal_info", "summary_paragraphs", "languages", "skills", "work_experience", "education", "hobbies".
+
+    1.  `personal_info`: An object with keys "NAME", "JOB_TITLE", "phone", "email", "city", "zip", "country", "Linkedin".
+    2.  `summary_paragraphs`: A list of strings, containing exactly two paragraphs.
+    3.  `languages`: A list of objects, each with "language" and "level" keys.
+    4.  `skills`: A simple list of strings.
+    5.  `work_experience`: A list of objects. Each object represents a single job and MUST have these keys: "company", "from", "to", "title". Additionally it may have these keys: "responsibility", and "achievements". "achievements" MUST contain a list of strings.
+    6.  `education`: A list of objects, each with "degree", "graduation", "university", "university_location", "university_country" keys.
+    7.  `hobbies`: A simple list of strings.
+
+    ---
+
+    **Master Objective:** The final output must read like it was written by a human, Swiss career expert. It must be strategic, persuasive, and reflect the candidate as a high-impact individual in their field.
+
+    **Advanced Rewriting and Content Generation Rules:**
+
+    **1. Core Analysis & `JOB_TITLE` Determination:**
+    - First, analyze all the text within the provided JSON. Identify if a potential future job description was included alongside the candidate's CV data.
+    - **`JOB_TITLE`:** This is the future job title for the person.
+        - If a job description seems present, derive the `JOB_TITLE` from it.
+        - If not, create an executive-sounding future headline based on their most recent `job_title` (e.g., if they are an "Account Manager," the new `JOB_TITLE` could be "Commercial Expert" or "Key Account Director").
+    - **`personal_info.NAME`:** Capitalize the person's name.
+
+    **2. Tone and Language (CRITICAL):**
+    - **Language:** Use British English spelling and grammar.
+    - **Dynamic Tone Selection:** The user has selected the following tone: **'{tone_selection}'**. You MUST adapt your writing style accordingly.
+        - 'Executive / Leadership': Use authoritative and strategic language.
+        - 'Technical / Expert': Focus on deep domain knowledge and specific technologies.
+        - 'Sales / Commercial': Use persuasive language focused on growth and revenue.
+
+    **3. Professional Summary (`summary_paragraphs`):**
+    - **Paragraph 1 (Strictly Two Sentences):** This paragraph must consist of exactly two complete sentences. DO NOT use headline fragments or '|' separators.
+        - **Sentence 1:** Define the candidate's professional identity using the new `JOB_TITLE` (e.g., "Commercial Expert with 15 years of experience in the premium cosmetics sector.").
+        - **Sentence 2:** State their single most impressive and quantifiable achievement from their recent career (e.g., "Most recently, drove regional growth by 18% through the implementation of a new sales training curriculum.").
+        - **Constraint:** The entire paragraph must not exceed 310 characters (including spaces).
+    - **Paragraph 2:** Write from the first-person ("I") perspective. Synthesize the candidate's core motivators and values. If no information is provided, create a strong, fitting paragraph based on their profile. **Strictly adhere to a maximum of 160 characters (including spaces).**
+
+    **4. Work Experience (`work_experience`):**
+    - Rename `job_title` to `title`, `from_date` to `from`, `to_date` to `to`.
+    - **Responsibility:** Write 1-2 concise sentences defining the scope and core purpose of the role. Quantify it immediately if possible.
+    - **Achievements:**
+        - **Result-by-Action Framework:** Rewrite each bullet to follow: "I achieved [Result] by [action]."
+        - **Quantification:** Use numbers from the input text. If none are present, create a strong, descriptive, non-quantified achievement. Do not invent numbers.
+        - **Number of Bullet Points:** Generate up to 3 achievement bullet points per job.
+
+    **5. Education:** Rename `graduation_date` to `graduation`.
+
+    **6. Negative Constraints (What to AVOID AT ALL COSTS):**
+    - **No Passive Voice:** Change "was responsible for" to "Managed," "Oversaw," etc.
+    - **NO BUZZWORDS:** Strictly avoid: seasoned, results-driven, dynamic, motivated, proven track record, passionate, innovative, creative thinker, strategic thinker, go-getter, self-starter, team player, leader of change, strong communicator, influencer, people-oriented, cross-functional collaborator, change agent, highly accomplished, expert in. Demonstrate qualities, do not state them.
+
+    **Final Instruction:** Your entire output MUST be a single, valid JSON object conforming to the final structure, and nothing else.
     """
     try:
         response = model.generate_content(prompt)
         if not response.parts:
-            st.error("🔴 AI Rewriter Error: The response was empty. This can happen if the extracted data triggers a safety filter.")
+            st.error("🔴 AI Rewriter Error: The response was empty.")
             return None
         return robust_json_parser(response.text)
     except Exception as e:
@@ -149,38 +169,25 @@ def rewrite_extracted_data(extracted_data, tone_selection):
         return None
 
 def generate_word_document(context):
-    """Renders the final context dictionary into the Word template, escaping special characters."""
+    """Renders the final context dictionary into the Word template."""
     try:
-        # This function recursively escapes special XML characters in the context dictionary
-        # to prevent errors when rendering the Word document.
         def escape_nested_dict(d):
-            if isinstance(d, dict):
-                return {k: escape_nested_dict(v) for k, v in d.items()}
-            elif isinstance(d, list):
-                return [escape_nested_dict(i) for i in d]
-            elif isinstance(d, str):
-                return escape(d)
-            else:
-                return d
-
+            if isinstance(d, dict): return {k: escape_nested_dict(v) for k, v in d.items()}
+            elif isinstance(d, list): return [escape_nested_dict(i) for i in d]
+            elif isinstance(d, str): return escape(d)
+            else: return d
         cleaned_context = escape_nested_dict(context)
-
-        # Check for the template file
         if not os.path.exists("CVTemplate_Python.docx"):
-            st.error("🔴 Critical Error: The template file 'CVTemplate_Python.docx' was not found. Please ensure it is in the same directory as the script.")
+            st.error("🔴 Critical Error: The template file 'CVTemplate_Python.docx' was not found.")
             return None
-
         doc = DocxTemplate("CVTemplate_Python.docx")
         doc.render(cleaned_context)
-
-        # Save the document to a buffer in memory
         doc_buffer = io.BytesIO()
         doc.save(doc_buffer)
         doc_buffer.seek(0)
         return doc_buffer
     except Exception as e:
-        st.error(f"Error generating the Word document: {e}. Please ensure your Word template (.docx) is not corrupt and uses the correct loop syntax (e.g., {{%tr for job in work_experience %}}).")
-        st.error("Template context keys being passed: " + str(list(context.keys())))
+        st.error(f"Error generating the Word document: {e}. Check that your template keys match the data structure.")
     return None
 
 # -------------------------------------
@@ -190,240 +197,150 @@ def run_the_app():
     st.sidebar.success("✅ Logged in successfully!")
     st.title("🇨🇭 The Ultimate Swiss CV Enhancer")
 
-    # Initialize session state for storing CV data
-    if 'cv_data' not in st.session_state:
-        st.session_state.cv_data = None
+    if 'cv_data' not in st.session_state: st.session_state.cv_data = None
 
-    # --- STEP 1: UPLOAD AND ANALYZE ---
-    st.header("Step 1: Consolidate & Analyse Information")
-    st.markdown("Upload your current CV, cover letter, the job description, or any other relevant documents. You can also paste additional text.")
-
+    st.header("Step 1: Provide Your Information")
     col1, col2 = st.columns(2)
     with col1:
-        uploaded_files = st.file_uploader(
-            "Upload relevant documents (.pdf, .docx)",
-            type=["pdf", "docx"],
-            accept_multiple_files=True
-        )
+        uploaded_files = st.file_uploader("Upload documents (CV, job description, etc.)", type=["pdf", "docx"], accept_multiple_files=True)
     with col2:
-        free_text_input = st.text_area("Or paste any additional text here (e.g., job description, notes):", height=200)
+        free_text_input = st.text_area("Paste additional text or notes here:", height=200)
 
-    st.subheader("Select the Desired Tone for your CV")
-    tone_selection = st.selectbox(
-        "Choose the tone that best fits the target role:",
-        ("Executive / Leadership", "Technical / Expert", "Sales / Commercial", "Project Management", "General Professional"),
-        key="tone_selector"
-    )
+    tone_selection = st.selectbox( "Select the Desired Tone:", ("Executive / Leadership", "Technical / Expert", "Sales / Commercial", "Project Management", "General Professional"))
 
-    if st.button("🚀 Analyse All Info & Fill Form", type="primary", use_container_width=True):
+    if st.button("🚀 Analyse, Rewrite & Fill Form", type="primary", use_container_width=True):
         all_texts = [free_text_input] if free_text_input else []
         if uploaded_files:
             for file in uploaded_files:
                 text = extract_text_from_file(file)
-                if text:
-                    all_texts.append(text)
-
+                if text: all_texts.append(text)
         if not all_texts:
             st.warning("Please upload at least one file or provide some text.")
         else:
             consolidated_text = "\n\n--- DOCUMENT SEPARATOR ---\n\n".join(all_texts)
-
-            with st.spinner("🤖 Step 1/2: Extracting all data from documents... This may take a moment."):
+            with st.spinner("🤖 Step 1/2: Extracting raw data from documents..."):
                 extracted_data = extract_raw_data(consolidated_text)
-
             if extracted_data:
-                st.info("✅ Data extracted. Now polishing content...")
-                with st.spinner(f"🤖 Step 2/2: Rewriting and polishing content for a '{tone_selection}' role..."):
+                st.info("✅ Raw data extracted. Now applying expert rewriting rules...")
+                with st.spinner(f"🤖 Step 2/2: Rewriting content for a '{tone_selection}' role..."):
                     rewritten_data = rewrite_extracted_data(extracted_data, tone_selection)
                     if rewritten_data:
                         st.session_state.cv_data = rewritten_data
-                        st.success("✨ Success! The form below is now filled with enhanced content. Please review before generating.")
+                        st.success("✨ Success! The form is filled. Review and edit the content below.")
                         st.balloons()
                     else:
-                        st.error("Data rewriting failed. Please review the AI's output if provided above and try again.")
+                        st.error("AI Rewriting Failed.")
             else:
-                st.error("Data extraction failed. Please check your documents or try rephrasing your notes.")
+                st.error("AI Extraction Failed.")
 
-    # --- STEP 2: REVIEW, EDIT, AND GENERATE ---
     if st.session_state.cv_data:
-        st.header("Step 2: Review, Edit, and Generate Final Document")
-        st.info("You can now edit any of the AI-generated text below. Your changes will be saved in the final document.")
-
+        st.header("Step 2: Review, Edit, and Generate")
         data = st.session_state.cv_data
-        
-        # Use a form to collect all the user edits at once
         with st.form(key='cv_editor_form'):
-            # --- Personal Information ---
+            # This form directly edits values in session state for simplicity
             with st.expander("👤 Personal Information", expanded=True):
                 p_info = data.get('personal_info', {})
                 col1, col2 = st.columns(2)
-                p_info['name'] = col1.text_input("Full Name", p_info.get('name'), key="name")
-                p_info['job_title'] = col2.text_input("Target Job Title", p_info.get('job_title'), key="job_title")
-                p_info['email'] = col1.text_input("Email", p_info.get('email'), key="email")
-                p_info['phone'] = col2.text_input("Phone", p_info.get('phone'), key="phone")
-                p_info['city'] = col1.text_input("City", p_info.get('city'), key="city")
-                p_info['zip_code'] = col2.text_input("ZIP Code", p_info.get('zip_code'), key="zip_code")
-                p_info['linkedin_url'] = st.text_input("LinkedIn Profile URL", p_info.get('linkedin_url'), key="linkedin_url")
+                st.text_input("Full Name", p_info.get('NAME'), key="p_NAME")
+                st.text_input("Target Job Title", p_info.get('JOB_TITLE'), key="p_JOB_TITLE")
+                st.text_input("Email", p_info.get('email'), key="p_email")
+                st.text_input("Phone", p_info.get('phone'), key="p_phone")
+                st.text_input("City", p_info.get('city'), key="p_city")
+                st.text_input("ZIP", p_info.get('zip'), key="p_zip")
+                st.text_input("Country", p_info.get('country'), key="p_country")
+                st.text_input("LinkedIn Profile URL", p_info.get('Linkedin'), key="p_Linkedin")
 
-            # --- Professional Summary ---
             with st.expander("📄 Professional Summary", expanded=True):
                 summaries = data.get('summary_paragraphs', ['', ''])
-                summary_1 = st.text_area("Summary Paragraph 1", summaries[0] if len(summaries) > 0 else "", height=150, key="summary_1")
-                summary_2 = st.text_area("Summary Paragraph 2", summaries[1] if len(summaries) > 1 else "", height=150, key="summary_2")
+                st.text_area("Summary Paragraph 1", summaries[0] if len(summaries) > 0 else "", height=100, key="summary_1", max_chars=310)
+                st.text_area("Summary Paragraph 2 (first-person 'I')", summaries[1] if len(summaries) > 1 else "", height=80, key="summary_2", max_chars=160)
 
-            # --- Work Experience ---
             with st.expander("💼 Work Experience", expanded=True):
                 if 'work_experience' in data and data['work_experience']:
                     for i, job in enumerate(data['work_experience']):
                         st.markdown(f"--- \n**Job {i+1}**")
+                        st.text_input("Job Title", job.get('title'), key=f"we_title_{i}")
+                        st.text_input("Company", job.get('company'), key=f"we_company_{i}")
                         col1, col2 = st.columns(2)
-                        job['job_title'] = col1.text_input("Job Title", job.get('job_title'), key=f"we_title_{i}")
-                        job['company'] = col2.text_input("Company", job.get('company'), key=f"we_company_{i}")
-                        job['location'] = col1.text_input("Location", job.get('location'), key=f"we_location_{i}")
-                        job['from_date'] = col2.text_input("From Date", job.get('from_date'), key=f"we_from_{i}")
-                        job['to_date'] = col1.text_input("To Date", job.get('to_date'), key=f"we_to_{i}")
-                        job['responsibilities'] = st.text_area("Responsibilities", job.get('responsibilities'), key=f"we_resp_{i}", height=100)
-                        
-                        st.markdown("**Achievements**")
-                        # Use a text area for achievements, one per line for easier editing
-                        ach_text = "\n".join(job.get('achievements', []))
-                        edited_ach_text = st.text_area("Achievements (one per line)", ach_text, key=f"we_ach_{i}", height=120)
-                        job['achievements'] = [line.strip() for line in edited_ach_text.split('\n') if line.strip()]
+                        col1.text_input("From Date", job.get('from'), key=f"we_from_{i}")
+                        col2.text_input("To Date", job.get('to'), key=f"we_to_{i}")
+                        st.text_area("Responsibility", job.get('responsibility', ''), key=f"we_resp_{i}", height=100)
+                        st.text_area("Achievements (one per line)", "\n".join(job.get('achievements', [])), key=f"we_ach_{i}", height=120)
 
-
-            # --- Skills, Languages, Hobbies ---
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                with st.expander("🛠️ Skills"):
-                    skills_text = ", ".join(data.get('skills', []))
-                    edited_skills = st.text_area("Skills (comma separated)", skills_text, key="skills")
-            with col2:
-                with st.expander("🌐 Languages"):
-                    lang_text = "\n".join([f"{l['language']}: {l['level']}" for l in data.get('languages', [])])
-                    edited_langs = st.text_area("Languages (Name: Level)", lang_text, key="languages")
-            with col3:
-                with st.expander("🎨 Hobbies"):
-                    hobbies_text = ", ".join(data.get('hobbies', []))
-                    edited_hobbies = st.text_area("Hobbies (comma separated)", hobbies_text, key="hobbies")
-
-            # --- Education ---
-            with st.expander("🎓 Education & Qualifications"):
+            with st.expander("🎓 Education & Qualifications", expanded=True):
                 if 'education' in data and data['education']:
                     for i, edu in enumerate(data['education']):
                         st.markdown(f"--- \n**Qualification {i+1}**")
+                        st.text_input("Degree/Qualification", edu.get('degree'), key=f"edu_degree_{i}")
+                        st.text_input("Graduation Date", edu.get('graduation'), key=f"edu_graduation_{i}")
+                        st.text_input("University/Institution", edu.get('university'), key=f"edu_university_{i}")
                         col1, col2 = st.columns(2)
-                        edu['degree'] = col1.text_input("Degree/Qualification", edu.get('degree'), key=f"edu_degree_{i}")
-                        edu['institution'] = col2.text_input("Institution", edu.get('institution'), key=f"edu_inst_{i}")
-                        edu['grad_year'] = col1.text_input("Year", edu.get('grad_year'), key=f"edu_year_{i}")
-                        edu['details'] = col2.text_input("Details (Optional)", edu.get('details'), key=f"edu_details_{i}")
+                        col1.text_input("University Location", edu.get('university_location'), key=f"edu_location_{i}")
+                        col2.text_input("University Country", edu.get('university_country'), key=f"edu_country_{i}")
 
-            # --- Form Submission ---
-            st.markdown("---")
-            submit_button = st.form_submit_button(
-                label='📄 Generate Final Word Document',
-                use_container_width=True
-            )
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                with st.expander("🛠️ Skills"): st.text_area("Skills (comma separated)", ", ".join(data.get('skills', [])), key="skills")
+            with col2:
+                with st.expander("🌐 Languages"): st.text_area("Languages (Name: Level)", "\n".join([f"{l['language']}: {l['level']}" for l in data.get('languages', [])]), key="languages")
+            with col3:
+                with st.expander("🎨 Hobbies"): st.text_area("Hobbies (comma separated)", ", ".join(data.get('hobbies', [])), key="hobbies")
+
+            submit_button = st.form_submit_button(label='📄 Generate Final Word Document', use_container_width=True)
 
         if submit_button:
-            # --- CONSTRUCT THE FINAL CONTEXT FROM THE FORM DATA ---
+            # CORRECTED: This block now builds the 'final_context' dictionary to EXACTLY match your Word template.
             final_context = {}
             
-            # This logic is critical: it rebuilds the context from the form's state (st.session_state)
-            # which now holds all the user's edits.
-            
-            # Personal Info
-            final_context['personal_info'] = {
-                'name': st.session_state.name,
-                'job_title': st.session_state.job_title,
-                'email': st.session_state.email,
-                'phone': st.session_state.phone,
-                'city': st.session_state.city,
-                'zip_code': st.session_state.zip_code,
-                'linkedin_url': st.session_state.linkedin_url
-            }
-            # Summary
+            # Unpack personal info fields to the top level for the template
+            final_context['NAME'] = st.session_state.p_NAME
+            final_context['JOB_TITLE'] = st.session_state.p_JOB_TITLE
+            final_context['phone'] = st.session_state.p_phone
+            final_context['email'] = st.session_state.p_email
+            final_context['city'] = st.session_state.p_city
+            final_context['zip'] = st.session_state.p_zip
+            final_context['country'] = st.session_state.p_country
+            final_context['Linkedin'] = st.session_state.p_Linkedin
+
+            # Assign summary paragraphs to the specific keys the template expects
             final_context['summary_paragraph_1'] = st.session_state.summary_1
             final_context['summary_paragraph_2'] = st.session_state.summary_2
             
-            # Work Experience
-            final_context['work_experience'] = []
-            for i, _ in enumerate(st.session_state.cv_data['work_experience']):
-                job = {
-                    'job_title': st.session_state[f'we_title_{i}'],
-                    'company': st.session_state[f'we_company_{i}'],
-                    'location': st.session_state[f'we_location_{i}'],
-                    'from_date': st.session_state[f'we_from_{i}'],
-                    'to_date': st.session_state[f'we_to_{i}'],
-                    'responsibilities': st.session_state[f'we_resp_{i}'],
-                    'achievements': [line.strip() for line in st.session_state[f'we_ach_{i}'].split('\n') if line.strip()]
-                }
-                final_context['work_experience'].append(job)
-
-            # Education
-            final_context['education'] = []
-            if 'education' in st.session_state.cv_data:
-                for i, _ in enumerate(st.session_state.cv_data['education']):
-                    edu = {
-                        'degree': st.session_state[f'edu_degree_{i}'],
-                        'institution': st.session_state[f'edu_inst_{i}'],
-                        'grad_year': st.session_state[f'edu_year_{i}'],
-                        'details': st.session_state[f'edu_details_{i}']
-                    }
-                    final_context['education'].append(edu)
-
-            # Skills, Languages, Hobbies
+            # Reconstruct lists for loops from the form fields
+            final_context['work_experience'] = [{'title': st.session_state[f'we_title_{i}'], 'company': st.session_state[f'we_company_{i}'], 'from': st.session_state[f'we_from_{i}'], 'to': st.session_state[f'we_to_{i}'], 'responsibility': st.session_state[f'we_resp_{i}'], 'achievements': [line.strip() for line in st.session_state[f'we_ach_{i}'].split('\n') if line.strip()]} for i, _ in enumerate(data['work_experience'])]
+            final_context['education'] = [{'degree': st.session_state[f'edu_degree_{i}'], 'graduation': st.session_state[f'edu_graduation_{i}'], 'university': st.session_state[f'edu_university_{i}'], 'university_location': st.session_state[f'edu_location_{i}'], 'university_country': st.session_state[f'edu_country_{i}']} for i, _ in enumerate(data.get('education', []))]
             final_context['skills'] = [s.strip() for s in st.session_state.skills.split(',') if s.strip()]
             final_context['hobbies'] = [h.strip() for h in st.session_state.hobbies.split(',') if h.strip()]
-            final_context['languages'] = []
-            for line in st.session_state.languages.split('\n'):
-                if ':' in line:
-                    lang, _, level = line.partition(':')
-                    final_context['languages'].append({'language': lang.strip(), 'level': level.strip()})
+            final_context['languages'] = [{'language': line.partition(':')[0].strip(), 'level': line.partition(':')[2].strip()} for line in st.session_state.languages.split('\n') if ':' in line]
             
             with st.spinner("Creating your polished Word document..."):
                 doc_buffer = generate_word_document(final_context)
                 if doc_buffer:
                     st.success("✅ Document Generated!")
-                    st.download_button(
-                        label="📥 Download Your Enhanced CV",
-                        data=doc_buffer,
-                        file_name=f"Enhanced_CV_{final_context['personal_info'].get('name', 'CV')}.docx",
-                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                        use_container_width=True
-                    )
-
+                    st.download_button(label="📥 Download Your Enhanced CV", data=doc_buffer, file_name=f"Enhanced_CV_{final_context.get('NAME', 'CV')}.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document", use_container_width=True)
 
 # -------------------------------------
-# 5. PASSWORD CHECK (Corrected Version)
+# 5. PASSWORD CHECK
 # -------------------------------------
 def check_password():
     """Returns `True` if the user entered the correct password."""
     try:
-        # Check if the password has already been verified in the current session.
         if st.session_state.get("password_correct", False):
             return True
-
-        # If not verified, display the password input form.
         st.title("🔐 Secure Access")
         password = st.text_input("Please enter the password to access the tool:", type="password", key="password_input")
-
-        # Use st.secrets for password storage comparison.
         correct_password = st.secrets.get("APP_PASSWORD")
         if not correct_password:
-             st.error("🔴 Critical Error: Application password is not configured in st.secrets. Please contact the administrator.")
+             st.error("🔴 Critical Error: Application password is not configured in st.secrets.")
              return False
-
         if password == correct_password:
             st.session_state.password_correct = True
-            # This is the corrected line:
-            st.rerun() # Use the modern `st.rerun()` to reload the app state.
-        elif password: # If the user has entered any password and it's wrong
+            st.rerun()
+        elif password:
             st.error("Password incorrect. Please try again.")
-        else: # If the field is empty
+        else:
             st.info("A password is required to use this application.")
-        
         return False
-
     except Exception as e:
         st.error(f"🔴 An unexpected error occurred in the password check function: {e}")
         return False
