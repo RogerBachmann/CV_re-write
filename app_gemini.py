@@ -1,33 +1,3 @@
-{% if education %}
-EDUCATION & QUALIFICATIONS
-{% for edu in education %}
-{{ edu.degree }}	{{ edu.graduation }}
-{{ [edu.university, edu.university_location, edu.university_country] | select | join(', ') }}
-{% endfor %}
-{% endif %}
-```*(Similarly, put `{{ edu.degree }}` in the left cell and `{{ edu.graduation }}` in the right cell of a borderless, right-aligned table row.)*
-
----
-
-### 2. Verification of the Master Script
-
-You are right to demand a final check. I have reviewed the last script I provided. It **is** the master script, but it requires the two small, critical bug fixes you identified. I will list them here for complete transparency.
-
-*   **Bug 1: "None" for the latest job's "To" date.**
-    *   **Fix:** I have added logic to the `submit_button` section. It now specifically checks if it's the first job in the list and if its "to" date is empty. If both are true, it replaces the date with the word "Present".
-
-*   **Bug 2: The disappearing "&" sign.**
-    *   **Fix:** The `generate_word_document` function was using a faulty manual text replacement. I have removed it and replaced it with the library's built-in, correct method for handling special characters (`autoescape=True`). This will preserve your headings perfectly.
-
-These are the **only two changes** I have made to the Python code since the last version. The AI prompts are identical to the master version we finalized.
-
----
-
-### The Final, Definitive Master Script
-
-This script contains these final bug fixes. It is built to work with the corrected Word template structure. I am profoundly sorry for the repeated errors and the immense frustration. This is the correct, working version.
-
-```python
 # -------------------------------------
 # 1. SETUP AND IMPORTS
 # -------------------------------------
@@ -229,7 +199,7 @@ def rewrite_extracted_data(extracted_data, tone_selection, consolidated_text):
 def generate_word_document(context):
     """Renders the final context dictionary into the Word template."""
     try:
-        # FIX: Using the library's built-in autoescape is the correct and robust way to handle special characters like '&'.
+        # Using the library's built-in autoescape is the correct and robust way to handle special characters like '&'.
         if not os.path.exists("CVTemplate_Python.docx"):
             st.error("🔴 Critical Error: The template file 'CVTemplate_Python.docx' was not found.")
             return None
@@ -359,16 +329,18 @@ def run_the_app():
             work_experience_data = data.get('work_experience', [])[:10]
             for i, _ in enumerate(work_experience_data):
                 to_date_value = st.session_state.get(f'we_to_{i}', '')
-                # If the user typed 'Present' (or it was pre-filled), keep it. Otherwise, use the date.
-                # If it's the first job and the original data was empty, it will be 'Present'.
+                # If the user typed 'Present', we keep it. If they deleted it, we check the original logic.
                 job_data = {
                     'title': st.session_state.get(f'we_title_{i}', ''),
                     'company': st.session_state.get(f'we_company_{i}', ''),
                     'from': st.session_state.get(f'we_from_{i}', ''),
-                    'to': to_date_value if to_date_value else 'Present' if i == 0 else '',
+                    'to': to_date_value,
                     'responsibility': st.session_state.get(f'we_resp_{i}', ''),
                     'achievements': [line.strip() for line in st.session_state.get(f'we_ach_{i}', '').split('\n') if line.strip()]
                 }
+                # Final check: If the final 'to' date is empty AND it's the first job, set to 'Present'.
+                if i == 0 and not job_data['to']:
+                    job_data['to'] = 'Present'
                 work_experience_list.append(job_data)
             final_context['work_experience'] = work_experience_list
             
