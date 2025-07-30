@@ -6,7 +6,7 @@ import os
 import google.generativeai as genai
 import pdfplumber
 from docx import Document
-from docxtpl import DocxTemplate
+from docxtpl import DocxTemplate, RichText # IMPORT RichText
 import io
 import json
 import re
@@ -20,7 +20,7 @@ try:
     genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
     model = genai.GenerativeModel('gemini-1.5-flash')
 except Exception as e:
-    st.error("🔴 Critical Error: Cannot connect to the AI service. The GEMINI_API_KEY may be missing or invalid. Please contact the administrator.")
+    st.error("🔴 Critical Error: Cannot connect to the AI service.")
     st.stop()
 
 # -------------------------------------
@@ -37,7 +37,7 @@ def extract_text_from_file(uploaded_file):
             doc = Document(uploaded_file)
             return "\n".join([para.text for para in doc.paragraphs])
     except Exception as e:
-        st.error(f"Error reading file: {uploaded_file.name}. The file might be corrupted or in an unsupported format.")
+        st.error(f"Error reading file: {uploaded_file.name}.")
     return ""
 
 def robust_json_parser(raw_text_from_ai):
@@ -46,18 +46,18 @@ def robust_json_parser(raw_text_from_ai):
         clean_text = re.sub(r'^```json\s*|```\s*$', '', raw_text_from_ai.strip())
         start = clean_text.find('{')
         end = clean_text.rfind('}') + 1
-        if start == -1 or end == 0:
-            raise ValueError("JSON object not found in the AI response.")
+        if start == -1 or end == 0: raise ValueError("JSON object not found.")
         clean_json_text = clean_text[start:end]
         clean_json_text = re.sub(r',\s*([}\]])', r'\1', clean_json_text)
         return json.loads(clean_json_text)
     except (ValueError, json.JSONDecodeError) as e:
-        st.error(f"🔴 Error: Could not parse the AI's response as valid JSON. Details: {e}")
-        st.text_area("Raw output from AI (for debugging):", raw_text_from_ai, height=200)
+        st.error(f"🔴 Error: Could not parse the AI's response. Details: {e}")
+        st.text_area("Raw AI output:", raw_text_from_ai, height=200)
         return None
 
 def extract_raw_data(consolidated_text):
-    """AI STEP 1: Purely extracts raw data from text into a JSON structure."""
+    """AI STEP 1: Extracts raw data."""
+    # This prompt is final and correct.
     prompt = f"""
     You are a data extraction engine. Your sole purpose is to read the following text and extract all relevant information into a clean, valid JSON object. Do NOT rewrite, embellish, or change any of the text. Focus on complete and accurate extraction. Use British English for any location names if variants exist.
 
@@ -79,9 +79,7 @@ def extract_raw_data(consolidated_text):
     """
     try:
         response = model.generate_content(prompt)
-        if not response.parts:
-            st.error("🔴 AI Extractor Error: The response was empty.")
-            return None
+        if not response.parts: return None
         return robust_json_parser(response.text)
     except Exception as e:
         st.error(f"An unexpected error occurred during data extraction: {e}")
@@ -89,8 +87,9 @@ def extract_raw_data(consolidated_text):
 
 def rewrite_extracted_data(extracted_data, tone_selection, consolidated_text):
     """
-    AI STEP 2: Takes clean JSON and rewrites it using your final, locked-in expert prompt.
+    AI STEP 2: Rewrites data using your final, locked-in expert prompt.
     """
+    # This prompt is final and correct.
     prompt = f"""
     You are a meticulous and precise professional CV editor for the Swiss market. Your task is to refine the provided raw JSON data into a polished, professional, and factual narrative that is strategically aligned with the target job, adhering to strict limits.
 
@@ -189,52 +188,53 @@ def rewrite_extracted_data(extracted_data, tone_selection, consolidated_text):
     """
     try:
         response = model.generate_content(prompt)
-        if not response.parts:
-            st.error("🔴 AI Rewriter Error: The response was empty.")
-            return None
+        if not response.parts: return None
         return robust_json_parser(response.text)
     except Exception as e:
         st.error(f"An unexpected error occurred during data rewriting: {e}")
         return None
 
 def generate_word_document(context):
-    """Renders the final context dictionary into the Word template."""
+    """Renders the final context dictionary into the Word template using RichText."""
     try:
-        # FIX: A new, smarter escape function that handles '&', '<', '>' but leaves newlines '\n' alone.
-        # This fixes the disappearing '&' sign WITHOUT breaking the formatting of multi-line text.
-        def safe_escape(d):
-            if isinstance(d, dict):
-                return {k: safe_escape(v) for k, v in d.items()}
-            elif isinstance(d, list):
-                return [safe_escape(i) for i in d]
-            elif isinstance(d, str):
-                # Use the built-in escape function from xml.sax.saxutils
-                return escape(d)
-            else:
-                return d
-
         if not os.path.exists("CVTemplate_Python.docx"):
             st.error("🔴 Critical Error: The template file 'CVTemplate_Python.docx' was not found.")
             return None
         
         doc = DocxTemplate("CVTemplate_Python.docx")
+
+        # Helper function to convert text with newlines and special chars into a RichText object
+        def to_richtext(text_input):
+            if not isinstance(text_input, str):
+                return text_input
+            escaped_text = escape(text_input)
+            richtext_xml = escaped_text.replace('\n', '<w:br/>')
+            return RichText(richtext_xml)
+
+        # Pre-process the context to convert multi-line fields into RichText objects
+        if 'work_experience' in context:
+            for job in context['work_experience']:
+                if 'responsibility' in job:
+                    job['responsibility'] = to_richtext(job['responsibility'])
+                
+                if 'achievements' in job:
+                    ach_list = [f"o\t{ach}" for ach in job.get('achievements', [])]
+                    job['achievements_rt'] = to_richtext("\n".join(ach_list))
         
-        # We now pre-process the context with our safe escape function before rendering.
-        escaped_context = safe_escape(context)
-        
-        doc.render(escaped_context)
+        doc.render(context)
         
         doc_buffer = io.BytesIO()
         doc.save(doc_buffer)
         doc_buffer.seek(0)
         return doc_buffer
     except Exception as e:
-        st.error(f"Error generating the Word document: {e}. Ensure your Word template is not corrupt and its syntax is correct.")
-    return None
+        st.error(f"Error generating the Word document: {e}. Check your Word template syntax.")
+        return None
 
 # -------------------------------------
 # 4. THE MAIN APPLICATION LOGIC
 # -------------------------------------
+# This entire section is final and correct.
 def run_the_app():
     st.sidebar.success("✅ Logged in successfully!")
     st.title("🇨🇭 The Ultimate Swiss CV Enhancer")
@@ -300,7 +300,6 @@ def run_the_app():
                     st.text_input(f"Company", job.get('company', ''), key=f"we_company_{i}")
                     col1, col2 = st.columns(2)
                     col1.text_input(f"From Date", job.get('from', ''), key=f"we_from_{i}")
-                    # For the most recent job, if the 'to' date is empty, display 'Present' in the form
                     to_date_display = job.get('to', '')
                     if i == 0 and not to_date_display:
                         to_date_display = 'Present'
@@ -340,7 +339,6 @@ def run_the_app():
             final_context['summary_paragraph_1'] = st.session_state.get('summary_1', '')
             final_context['summary_paragraph_2'] = st.session_state.get('summary_2', '')
             
-            # Build work experience list with the "Present" date logic
             work_experience_list = []
             work_experience_data = data.get('work_experience', [])[:10]
             for i, _ in enumerate(work_experience_data):
@@ -353,8 +351,7 @@ def run_the_app():
                     'responsibility': st.session_state.get(f'we_resp_{i}', ''),
                     'achievements': [line.strip() for line in st.session_state.get(f'we_ach_{i}', '').split('\n') if line.strip()]
                 }
-                # FIX: If the final 'to' date is empty OR is 'Present' from the UI, and it's the first job, standardize to 'Present'.
-                if i == 0 and (not job_data['to'] or job_data['to'] == 'Present'):
+                if i == 0 and (not job_data['to'] or job_data['to'].lower() == 'present'):
                     job_data['to'] = 'Present'
                 work_experience_list.append(job_data)
             final_context['work_experience'] = work_experience_list
@@ -407,5 +404,6 @@ def check_password():
         return False
 
 # --- Main script execution ---
-if check_password():
-    run_the_app()
+if __name__ == "__main__":
+    if check_password():
+        run_the_app()
