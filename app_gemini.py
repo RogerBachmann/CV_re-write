@@ -10,6 +10,7 @@ from docxtpl import DocxTemplate
 import io
 import json
 import re
+from xml.sax.saxutils import escape
 
 # -------------------------------------
 # 2. GEMINI API CONFIGURATION
@@ -199,14 +200,29 @@ def rewrite_extracted_data(extracted_data, tone_selection, consolidated_text):
 def generate_word_document(context):
     """Renders the final context dictionary into the Word template."""
     try:
-        # Using the library's built-in autoescape is the correct and robust way to handle special characters like '&'.
+        # FIX: A new, smarter escape function that handles '&', '<', '>' but leaves newlines '\n' alone.
+        # This fixes the disappearing '&' sign WITHOUT breaking the formatting of multi-line text.
+        def safe_escape(d):
+            if isinstance(d, dict):
+                return {k: safe_escape(v) for k, v in d.items()}
+            elif isinstance(d, list):
+                return [safe_escape(i) for i in d]
+            elif isinstance(d, str):
+                # Use the built-in escape function from xml.sax.saxutils
+                return escape(d)
+            else:
+                return d
+
         if not os.path.exists("CVTemplate_Python.docx"):
             st.error("🔴 Critical Error: The template file 'CVTemplate_Python.docx' was not found.")
             return None
         
         doc = DocxTemplate("CVTemplate_Python.docx")
-        # autoescape=True will handle special XML characters like '&' correctly.
-        doc.render(context, autoescape=True)
+        
+        # We now pre-process the context with our safe escape function before rendering.
+        escaped_context = safe_escape(context)
+        
+        doc.render(escaped_context)
         
         doc_buffer = io.BytesIO()
         doc.save(doc_buffer)
@@ -329,7 +345,6 @@ def run_the_app():
             work_experience_data = data.get('work_experience', [])[:10]
             for i, _ in enumerate(work_experience_data):
                 to_date_value = st.session_state.get(f'we_to_{i}', '')
-                # If the user typed 'Present', we keep it. If they deleted it, we check the original logic.
                 job_data = {
                     'title': st.session_state.get(f'we_title_{i}', ''),
                     'company': st.session_state.get(f'we_company_{i}', ''),
@@ -338,8 +353,8 @@ def run_the_app():
                     'responsibility': st.session_state.get(f'we_resp_{i}', ''),
                     'achievements': [line.strip() for line in st.session_state.get(f'we_ach_{i}', '').split('\n') if line.strip()]
                 }
-                # Final check: If the final 'to' date is empty AND it's the first job, set to 'Present'.
-                if i == 0 and not job_data['to']:
+                # FIX: If the final 'to' date is empty OR is 'Present' from the UI, and it's the first job, standardize to 'Present'.
+                if i == 0 and (not job_data['to'] or job_data['to'] == 'Present'):
                     job_data['to'] = 'Present'
                 work_experience_list.append(job_data)
             final_context['work_experience'] = work_experience_list
