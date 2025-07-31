@@ -1,3 +1,24 @@
+        # Helper function to convert text with newlines and special chars into a RichText object
+        def to_richtext(text_input):
+            if not isinstance(text_input, str):
+                return text_input
+            
+            # 1. First, and most importantly, escape the ampersand to its valid XML entity.
+            temp_text = text_input.replace('&', '&')
+            
+            # 2. Also escape less common but still problematic XML characters.
+            temp_text = temp_text.replace('<', '<')
+            temp_text = temp_text.replace('>', '>')
+            
+            # 3. Finally, replace python-style newlines with Word's specific line break tag.
+            richtext_xml = temp_text.replace('\n', '<w:br/>')
+            
+            # 4. Return the fully compliant RichText object.
+            return RichText(richtext_xml)```
+
+For your convenience, here is the full Python script with only this single function corrected.
+
+```python
 # -------------------------------------
 # 1. SETUP AND IMPORTS
 # -------------------------------------
@@ -181,7 +202,7 @@ def rewrite_extracted_data(extracted_data, tone_selection, consolidated_text):
 
     **8. Negative Constraints (AVOID AT ALL COSTS):**
     - No Passive Voice. Avoid the forbidden buzzword list.
-    - Strictly avoid: seasoned, results-driven, dynamic, motivated, proven track record, passionate, innovative, creative thinker, strategic thinker, go-getter, self-starter, team player, leader of change, strong communicator, influencer, a-people-oriented, cross-functional collaborator, change agent, highly accomplished, expert in.
+    - Strictly avoid: seasoned, results-driven, dynamic, motivated, proven track record, passionate, innovative, creative thinker, strategic thinker, go-getter, self-starter, team player, leader of change, strong communicator, influencer, people-oriented, cross-functional collaborator, change agent, highly accomplished, expert in.
     - Demonstrate qualities, do not state them.
 
     **Final Instruction:** Your entire output MUST be a single, valid JSON object conforming to the final structure and its limits.
@@ -211,14 +232,14 @@ def generate_word_document(context):
             if not isinstance(text_input, str):
                 return text_input
             
-            # 1. First, escape the ampersand to its XML entity. This is critical.
+            # 1. First, and most importantly, escape the ampersand to its valid XML entity.
             temp_text = text_input.replace('&', '&')
             
-            # 2. Escape other XML-sensitive characters.
+            # 2. Also escape less common but still problematic XML characters.
             temp_text = temp_text.replace('<', '<')
             temp_text = temp_text.replace('>', '>')
             
-            # 3. Replace python-style newlines with Word's line break tag.
+            # 3. Finally, replace python-style newlines with Word's specific line break tag.
             richtext_xml = temp_text.replace('\n', '<w:br/>')
             
             # 4. Return the fully compliant RichText object.
@@ -403,11 +424,11 @@ def check_password():
             return True
         st.title("🔐 Secure Access")
         password = st.text_input("Please enter the password to access the tool:", type="password", key="password_input")
-        correct_password = st.secrets.get("APP_PASSWORD")
-        if not correct_password:
+        _correct_password = st.secrets.get("APP_PASSWORD")
+        if not _correct_password:
              st.error("🔴 Critical Error: Application password is not configured in st.secrets.")
              return False
-        if password == correct_password:
+        if password == _correct_password:
             st.session_state.password_correct = True
             st.rerun()
         elif password:
