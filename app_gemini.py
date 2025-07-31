@@ -1,24 +1,3 @@
-        # Helper function to convert text with newlines and special chars into a RichText object
-        def to_richtext(text_input):
-            if not isinstance(text_input, str):
-                return text_input
-            
-            # 1. First, and most importantly, escape the ampersand to its valid XML entity.
-            temp_text = text_input.replace('&', '&')
-            
-            # 2. Also escape less common but still problematic XML characters.
-            temp_text = temp_text.replace('<', '<')
-            temp_text = temp_text.replace('>', '>')
-            
-            # 3. Finally, replace python-style newlines with Word's specific line break tag.
-            richtext_xml = temp_text.replace('\n', '<w:br/>')
-            
-            # 4. Return the fully compliant RichText object.
-            return RichText(richtext_xml)```
-
-For your convenience, here is the full Python script with only this single function corrected.
-
-```python
 # -------------------------------------
 # 1. SETUP AND IMPORTS
 # -------------------------------------
@@ -224,9 +203,6 @@ def generate_word_document(context):
         
         doc = DocxTemplate("CVTemplate_Python.docx")
 
-        # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
-        # >>>>> START OF CORRECTED REGION <<<<<
-        # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
         # Helper function to convert text with newlines and special chars into a RichText object
         def to_richtext(text_input):
             if not isinstance(text_input, str):
@@ -244,9 +220,6 @@ def generate_word_document(context):
             
             # 4. Return the fully compliant RichText object.
             return RichText(richtext_xml)
-        # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
-        # >>>>> END OF CORRECTED REGION <<<<<
-        # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 
         # Pre-process the context to convert multi-line fields into RichText objects
         if 'work_experience' in context:
@@ -424,11 +397,11 @@ def check_password():
             return True
         st.title("🔐 Secure Access")
         password = st.text_input("Please enter the password to access the tool:", type="password", key="password_input")
-        _correct_password = st.secrets.get("APP_PASSWORD")
-        if not _correct_password:
+        correct_password = st.secrets.get("APP_PASSWORD")
+        if not correct_password:
              st.error("🔴 Critical Error: Application password is not configured in st.secrets.")
              return False
-        if password == _correct_password:
+        if password == correct_password:
             st.session_state.password_correct = True
             st.rerun()
         elif password:
