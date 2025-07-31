@@ -203,13 +203,21 @@ def generate_word_document(context):
         
         doc = DocxTemplate("CVTemplate_Python.docx")
 
+        # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+        # >>>>> START OF CORRECTED REGION <<<<<
+        # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
         # Helper function to convert text with newlines and special chars into a RichText object
         def to_richtext(text_input):
             if not isinstance(text_input, str):
                 return text_input
-            escaped_text = escape(text_input)
+            # Correctly escape '<' and '>' but leave '&' alone
+            custom_escape_rules = {'<': '<', '>': '>'}
+            escaped_text = escape(text_input, custom_escape_rules)
             richtext_xml = escaped_text.replace('\n', '<w:br/>')
             return RichText(richtext_xml)
+        # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+        # >>>>> END OF CORRECTED REGION <<<<<
+        # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 
         # Pre-process the context to convert multi-line fields into RichText objects
         if 'work_experience' in context:
