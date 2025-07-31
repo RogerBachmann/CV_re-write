@@ -181,7 +181,7 @@ def rewrite_extracted_data(extracted_data, tone_selection, consolidated_text):
 
     **8. Negative Constraints (AVOID AT ALL COSTS):**
     - No Passive Voice. Avoid the forbidden buzzword list.
-    - Strictly avoid: seasoned, results-driven, dynamic, motivated, proven track record, passionate, innovative, creative thinker, strategic thinker, go-getter, self-starter, team player, leader of change, strong communicator, influencer, people-oriented, cross-functional collaborator, change agent, highly accomplished, expert in.
+    - Strictly avoid: seasoned, results-driven, dynamic, motivated, proven track record, passionate, innovative, creative thinker, strategic thinker, go-getter, self-starter, team player, leader of change, strong communicator, influencer, a-people-oriented, cross-functional collaborator, change agent, highly accomplished, expert in.
     - Demonstrate qualities, do not state them.
 
     **Final Instruction:** Your entire output MUST be a single, valid JSON object conforming to the final structure and its limits.
@@ -210,10 +210,18 @@ def generate_word_document(context):
         def to_richtext(text_input):
             if not isinstance(text_input, str):
                 return text_input
-            # Correctly escape '<' and '>' but leave '&' alone
-            custom_escape_rules = {'<': '<', '>': '>'}
-            escaped_text = escape(text_input, custom_escape_rules)
-            richtext_xml = escaped_text.replace('\n', '<w:br/>')
+            
+            # 1. First, escape the ampersand to its XML entity. This is critical.
+            temp_text = text_input.replace('&', '&')
+            
+            # 2. Escape other XML-sensitive characters.
+            temp_text = temp_text.replace('<', '<')
+            temp_text = temp_text.replace('>', '>')
+            
+            # 3. Replace python-style newlines with Word's line break tag.
+            richtext_xml = temp_text.replace('\n', '<w:br/>')
+            
+            # 4. Return the fully compliant RichText object.
             return RichText(richtext_xml)
         # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
         # >>>>> END OF CORRECTED REGION <<<<<
