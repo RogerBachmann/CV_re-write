@@ -6,7 +6,7 @@ import os
 import google.generativeai as genai
 import pdfplumber
 from docx import Document
-from docxtpl import DocxTemplate, RichText # IMPORT RichText
+from docxtpl import DocxTemplate
 import io
 import json
 import re
@@ -57,7 +57,6 @@ def robust_json_parser(raw_text_from_ai):
 
 def extract_raw_data(consolidated_text):
     """AI STEP 1: Extracts raw data."""
-    # This prompt is final and correct.
     prompt = f"""
     You are a data extraction engine. Your sole purpose is to read the following text and extract all relevant information into a clean, valid JSON object. Do NOT rewrite, embellish, or change any of the text. Focus on complete and accurate extraction. Use British English for any location names if variants exist.
 
@@ -86,10 +85,7 @@ def extract_raw_data(consolidated_text):
         return None
 
 def rewrite_extracted_data(extracted_data, tone_selection, consolidated_text):
-    """
-    AI STEP 2: Rewrites data using your final, locked-in expert prompt.
-    """
-    # This prompt is final and correct.
+    """AI STEP 2: Rewrites data using your final, locked-in expert prompt."""
     prompt = f"""
     You are a meticulous and precise professional CV editor for the Swiss market. Your task is to refine the provided raw JSON data into a polished, professional, and factual narrative that is strategically aligned with the target job, adhering to strict limits.
 
@@ -195,7 +191,7 @@ def rewrite_extracted_data(extracted_data, tone_selection, consolidated_text):
         return None
 
 def generate_word_document(context):
-    """Renders the final context dictionary into the Word template using RichText."""
+    """Renders the final context dictionary into the Word template with correct escaping."""
     try:
         if not os.path.exists("CVTemplate_Python.docx"):
             st.error("🔴 Critical Error: The template file 'CVTemplate_Python.docx' was not found.")
@@ -203,35 +199,25 @@ def generate_word_document(context):
         
         doc = DocxTemplate("CVTemplate_Python.docx")
 
-        # Helper function to convert text with newlines and special chars into a RichText object
-        def to_richtext(text_input):
-            if not isinstance(text_input, str):
-                return text_input
-            
-            # 1. First, and most importantly, escape the ampersand to its valid XML entity.
-            temp_text = text_input.replace('&', '&')
-            
-            # 2. Also escape less common but still problematic XML characters.
-            temp_text = temp_text.replace('<', '<')
-            temp_text = temp_text.replace('>', '>')
-            
-            # 3. Finally, replace python-style newlines with Word's specific line break tag.
-            richtext_xml = temp_text.replace('\n', '<w:br/>')
-            
-            # 4. Return the fully compliant RichText object.
-            return RichText(richtext_xml)
+        # This helper function walks through all the data and makes only the strings safe for XML.
+        # It correctly handles '&', '<', '>' but does NOT touch '\n'.
+        def safe_escape_data(data):
+            if isinstance(data, dict):
+                return {k: safe_escape_data(v) for k, v in data.items()}
+            elif isinstance(data, list):
+                return [safe_escape_data(item) for item in data]
+            elif isinstance(data, str):
+                # Use the standard library's robust escape function.
+                return escape(data)
+            else:
+                # Return numbers, booleans, etc. unchanged.
+                return data
 
-        # Pre-process the context to convert multi-line fields into RichText objects
-        if 'work_experience' in context:
-            for job in context['work_experience']:
-                if 'responsibility' in job:
-                    job['responsibility'] = to_richtext(job['responsibility'])
-                
-                if 'achievements' in job:
-                    ach_list = [f"o\t{ach}" for ach in job.get('achievements', [])]
-                    job['achievements_rt'] = to_richtext("\n".join(ach_list))
+        # Create a new, clean context by running all the data through the safe escape function.
+        safe_context = safe_escape_data(context)
         
-        doc.render(context)
+        # Render the document with the cleaned data.
+        doc.render(safe_context)
         
         doc_buffer = io.BytesIO()
         doc.save(doc_buffer)
@@ -244,7 +230,6 @@ def generate_word_document(context):
 # -------------------------------------
 # 4. THE MAIN APPLICATION LOGIC
 # -------------------------------------
-# This entire section is final and correct.
 def run_the_app():
     st.sidebar.success("✅ Logged in successfully!")
     st.title("🇨🇭 The Ultimate Swiss CV Enhancer")
