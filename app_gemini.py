@@ -154,16 +154,21 @@ def rewrite_extracted_data(extracted_data, tone_selection, consolidated_text):
     - **Paragraph 2 (First-person "I", max 160 chars):**
         - Synthesize the candidate's core motivators and values. If no information is provided, create a strong, fitting paragraph based on their profile. **Strictly adhere to a maximum of 160 characters (including spaces).**
 
-    **4. Work Experience (`work_experience`) - MAX 10:**
-    - Select a maximum of 10 work experiences, prioritizing the most recent and relevant ones.
-    - Rename keys: `job_title` to `title`, `from_date` to `from`, `to_date` to `to`.
-    - **Responsibility:** Write 1-2 concise, factual sentences for the role's scope.
-    - **Achievements (CRITICAL - Varied Perspective):**
-        - Do not start every bullet point with "I". The best practice is to start most with a powerful past-tense action verb (e.g., "Reduced," "Spearheaded," "Negotiated").
-        - Ensure the core message still communicates "[Result] by [Action]."
-        - **Quantification:** Use numbers from the input only. If none, describe the outcome professionally without exaggeration. Generate up to 3 achievements per job.
+    **4. Work experience (`work_experience`) - Max 10 entries:**
+- Prioritize the most recent and relevant roles.
+- Rename keys: `job_title` to `title`, `from_date` to `from`, `to_date` to `to`.
+- **Responsibility**: Write 1-2 concise, factual sentences describing the role's scope.
+- **Achievements (CRITICAL - Crafting Success Stories):**
+    - Rewrite the candidate's achievements from an ego perspective. Transform the simple bullet points into 1 to 3 powerful, personal success stories for each job.
+    - Each story must be a single, detailed sentence that clearly communicates the candidate's direct contribution and impact.
+    - **The Formula:** Every sentence must answer the questions: "What did I accomplish?", "How did I do it?", and "Why did it matter?".
+    - **Perfect Example of the Final Style:** "By investigating and quality-checking over 2,000 ICSR cases in compliance with GCP, FDA, and ICH guidelines, I achieved a 15% reduction in data discrepancies and ensured 100% inspection-readiness."
+    - **Mandatory Constraints:**
+        - Start with "I" or frame the sentence to be clearly from the first-person perspective (e.g., "By taking ownership of X, I achieved Y...").
+        - Ensure each sentence is comprehensive, approximately 25-45 words long.
+        - Use only the information available in the source text.
 
-    **5. Skills Selection & Prioritization (CRITICAL - MAX 6):**
+        **5. Skills Selection & Prioritization (CRITICAL - MAX 6):**
     - Analyze all skills from the RAW data and cross-reference with the job description in the FULL CONTEXT.
     - **Select the six (6) most relevant and impactful skills.** The final list must contain a maximum of 6 strings.
 
