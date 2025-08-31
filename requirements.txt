@@ -3,4 +3,4 @@ google-generativeai
 pdfplumber
 python-docx
 docx-template
-Jinja2
+Jinja2==3.1.2
