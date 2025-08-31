@@ -1,4 +1,4 @@
 streamlit
 google-generativeai
 pdfplumber
-docx-template
+docx-template~=0.10.1
