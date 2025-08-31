@@ -230,8 +230,8 @@ def rewrite_extracted_data(prompt):
 def generate_word_document(context, language, uploaded_image_data):
     """
     Renders the final context into the correct Word template, including the profile picture.
-    This version uses a Jinja2 environment to enable auto-escaping, which is compatible
-    with all versions of the library.
+    This version uses a Jinja2 environment passed to the render() method, which is the
+    correct, backward-compatible way to enable auto-escaping and prevent file corruption.
     """
     temp_image_path = None
     try:
@@ -245,10 +245,8 @@ def generate_word_document(context, language, uploaded_image_data):
             st.info(f"Please make sure you have two templates: 'CVTemplate_Python_EN.docx' and 'CVTemplate_Python_DE.docx' in the same folder as the script.")
             return None
         
-        # --- CHANGE: Create a Jinja2 environment with autoescape enabled ---
-        jinja_env = jinja2.Environment(autoescape=True)
-        # --- CHANGE: Pass the environment to the DocxTemplate constructor ---
-        doc = DocxTemplate(template_name, jinja_env=jinja_env)
+        # Load the template without any special arguments
+        doc = DocxTemplate(template_name)
 
         if uploaded_image_data:
             temp_image_path = f"temp_{uploaded_image_data.name}"
@@ -258,8 +256,11 @@ def generate_word_document(context, language, uploaded_image_data):
             image_to_insert = InlineImage(doc, temp_image_path, width=Mm(35))
             context['profile_pic'] = image_to_insert
 
-        # Render the context. The Jinja2 environment will handle the escaping.
-        doc.render(context)
+        # --- THE CORRECT METHOD ---
+        # 1. Create a Jinja2 environment with autoescape enabled
+        jinja_env = jinja2.Environment(autoescape=True)
+        # 2. Pass this environment to the render method
+        doc.render(context, jinja_env=jinja_env)
         
         doc_buffer = io.BytesIO()
         doc.save(doc_buffer)
