@@ -6,12 +6,12 @@ import os
 import google.generativeai as genai
 import pdfplumber
 from docx import Document
-from docxtpl import DocxTemplate, InlineImage  # <-- ADDED InlineImage
-from docx.shared import Mm                   # <-- ADDED Mm for size control
+from docxtpl import DocxTemplate, InlineImage
+from docx.shared import Mm
 import io
 import json
 import re
-from xml.sax.saxutils import escape
+# NOTE: No longer need 'escape' from xml.sax.saxutils
 
 # -------------------------------------
 # 2. GEMINI API CONFIGURATION
@@ -32,7 +32,7 @@ def get_prompts(language, extracted_data, tone_selection, consolidated_text):
     """
     Returns the appropriate extraction and rewriting prompts based on the selected language.
     """
-    # --- EXTRACTION PROMPT (Unchanged) ---
+    # Extraction prompt remains the same
     extraction_prompt = f"""
     You are a data extraction engine. Your sole purpose is to read the following text and extract all relevant information into a clean, valid JSON object. Do NOT rewrite, embellish, or change any of the text. Focus on complete and accurate extraction. Use British English for any location names if variants exist.
 
@@ -126,7 +126,7 @@ def get_prompts(language, extracted_data, tone_selection, consolidated_text):
         The root JSON object must contain these keys: "personal_info", "summary_paragraphs", "languages", "skills", "work_experience", "education", "hobbies".
         - `personal_info`: Object with keys "NAME", "JOB_TITLE", "phone", "email", "city", "zip", "country", "Linkedin".
         - `summary_paragraphs`: List of two strings.
-        - `languages`: List of objects, each with "language" and "level". **MAXIMUM of 6.**
+        - `languages`: List of objects. **MAXIMUM of 6.**
         - `skills`: List of strings. **MAXIMUM of 6.**
         - `work_experience`: List of objects. **MAXIMUM of 10.**
         - `education`: List of objects. **MAXIMUM of 10.**
@@ -143,12 +143,7 @@ def get_prompts(language, extracted_data, tone_selection, consolidated_text):
 
         **2. Tone and Language (CRITICAL):**
         - **Language:** Use British English.
-        - **Dynamic Tone Selection based on user's choice: '{tone_selection}'**. You must adapt your vocabulary, phrasing, and the aspects of the candidate's experience you highlight based on the following detailed rules:
-            - **If 'Executive / Leadership':** Focus on strategy, vision, P&L, leadership, and market impact.
-            - **If 'Technical / Expert':** Focus on deep domain knowledge, technical proficiency, and problem-solving.
-            - **If 'Sales / Commercial':** Focus on revenue generation, market growth, and client acquisition.
-            - **If 'Project Management':** Focus on on-time/on-budget delivery, efficiency, and risk mitigation.
-            - **If 'General Professional':** Focus on competence, collaboration, and successful execution of duties.
+        - **Dynamic Tone Selection based on user's choice: '{tone_selection}'**. You must adapt your vocabulary, phrasing, and the aspects of the candidate's experience you highlight.
 
         **3. Professional Summary (`summary_paragraphs`):**
         - **Paragraph 1 (Strictly Two Sentences, max 310 chars, quantify whenever possible):**
@@ -232,10 +227,11 @@ def rewrite_extracted_data(prompt):
         st.error(f"An unexpected error occurred during data rewriting: {e}")
         return None
 
-# --- NEW: UPDATED FUNCTION TO HANDLE IMAGE ---
+# --- CRITICAL CHANGE: CORRECTED DOCUMENT GENERATION LOGIC ---
 def generate_word_document(context, language, uploaded_image_data):
     """
     Renders the final context into the correct Word template, including the profile picture.
+    This version uses the library's built-in auto-escaping for robustness.
     """
     temp_image_path = None
     try:
@@ -249,31 +245,20 @@ def generate_word_document(context, language, uploaded_image_data):
             st.info(f"Please make sure you have two templates: 'CVTemplate_Python_EN.docx' and 'CVTemplate_Python_DE.docx' in the same folder as the script.")
             return None
         
-        doc = DocxTemplate(template_name)
+        # --- CHANGE: Enable autoescape and remove manual escaping ---
+        doc = DocxTemplate(template_name, autoescape=True)
 
-        # --- NEW: Image handling logic ---
         if uploaded_image_data:
             temp_image_path = f"temp_{uploaded_image_data.name}"
             with open(temp_image_path, "wb") as f:
                 f.write(uploaded_image_data.getbuffer())
             
-            # Create an InlineImage object with a fixed width
-            # The key 'profile_pic' MUST match the tag in your template's Alt Text
             image_to_insert = InlineImage(doc, temp_image_path, width=Mm(35))
             context['profile_pic'] = image_to_insert
 
-        def safe_escape_data(data):
-            if isinstance(data, dict):
-                return {k: safe_escape_data(v) for k, v in data.items()}
-            elif isinstance(data, list):
-                return [safe_escape_data(item) for item in data]
-            elif isinstance(data, str):
-                return escape(data)
-            else: # Handles InlineImage objects, numbers, etc.
-                return data
-
-        safe_context = safe_escape_data(context)
-        doc.render(safe_context)
+        # The 'safe_escape_data' function has been removed.
+        # We now render the context directly, letting the library handle sanitization.
+        doc.render(context)
         
         doc_buffer = io.BytesIO()
         doc.save(doc_buffer)
@@ -283,7 +268,6 @@ def generate_word_document(context, language, uploaded_image_data):
         st.error(f"Error generating the Word document: {e}. Check your Word template syntax and Alt Text tag.")
         return None
     finally:
-        # --- NEW: Cleanup temporary image file ---
         if temp_image_path and os.path.exists(temp_image_path):
             os.remove(temp_image_path)
 
@@ -310,7 +294,6 @@ def run_the_app():
         language_selection = st.selectbox("Select the Output Language:", ("English", "German"))
 
     if st.button("🚀 Analyse, Rewrite & Fill Form", type="primary", use_container_width=True):
-        # ... (Analysis logic remains the same)
         all_texts = [free_text_input] if free_text_input else []
         if uploaded_files:
             for file in uploaded_files:
@@ -343,13 +326,10 @@ def run_the_app():
         data = st.session_state.cv_data
         with st.form(key='cv_editor_form'):
             with st.expander("👤 Personal Information", expanded=True):
-                # --- NEW: Image Uploader ---
                 st.file_uploader("Upload Profile Picture (will replace placeholder in template)", type=["png", "jpg", "jpeg"], key="profile_picture_uploader")
-                
                 p_info = data.get('personal_info', {})
                 st.text_input("Full Name", p_info.get('NAME', ''), key="p_NAME")
                 st.text_input("Target Job Title", p_info.get('JOB_TITLE', ''), key="p_JOB_TITLE")
-                # ... (rest of the form is unchanged)
                 st.text_input("Email", p_info.get('email', ''), key="p_email")
                 st.text_input("Phone", p_info.get('phone', ''), key="p_phone")
                 st.text_input("City", p_info.get('city', ''), key="p_city")
@@ -396,11 +376,9 @@ def run_the_app():
             submit_button = st.form_submit_button(label='📄 Generate Final Word Document', use_container_width=True)
 
         if submit_button:
-            # --- NEW: Get the uploaded picture from the session state ---
             uploaded_pic = st.session_state.get('profile_picture_uploader')
             
             final_context = {}
-            # ... (context building is the same)
             final_context['NAME'] = st.session_state.get('p_NAME', '')
             final_context['JOB_TITLE'] = st.session_state.get('p_JOB_TITLE', '')
             final_context['phone'] = st.session_state.get('p_phone', '')
@@ -445,7 +423,6 @@ def run_the_app():
             final_context['hobbies'] = [h.strip() for h in st.session_state.get('hobbies', '').split('\n') if h.strip()][:6]
 
             with st.spinner("Creating your polished Word document..."):
-                # --- NEW: Pass the image data to the function ---
                 doc_buffer = generate_word_document(final_context, language_selection, uploaded_pic)
                 if doc_buffer:
                     st.success("✅ Document Generated!")
