@@ -6,12 +6,11 @@ import os
 import google.generativeai as genai
 import pdfplumber
 from docx import Document
-from docxtpl import DocxTemplate, InlineImage
-from docx.shared import Mm
+from docxtpl import DocxTemplate
 import io
 import json
 import re
-import jinja2
+from xml.sax.saxutils import escape
 
 # -------------------------------------
 # 2. GEMINI API CONFIGURATION
@@ -31,8 +30,8 @@ except Exception as e:
 def get_prompts(language, extracted_data, tone_selection, consolidated_text):
     """
     Returns the appropriate extraction and rewriting prompts based on the selected language.
-    This version contains the full, unabridged prompts.
     """
+    # --- EXTRACTION PROMPT (Unchanged) ---
     extraction_prompt = f"""
     You are a data extraction engine. Your sole purpose is to read the following text and extract all relevant information into a clean, valid JSON object. Do NOT rewrite, embellish, or change any of the text. Focus on complete and accurate extraction. Use British English for any location names if variants exist.
 
@@ -53,6 +52,7 @@ def get_prompts(language, extracted_data, tone_selection, consolidated_text):
     ---
     """
 
+    # --- REWRITING PROMPTS (Language-Specific) ---
     if language == "German":
         tone_map_de = {
             "Executive / Leadership": "Führungskraft / Management",
@@ -63,6 +63,7 @@ def get_prompts(language, extracted_data, tone_selection, consolidated_text):
         }
         german_tone = tone_map_de.get(tone_selection, "Allgemein / Fachlich")
 
+        # --- NEW: COMPLETELY REWRITTEN HIGH-QUALITY GERMAN PROMPT ---
         rewriting_prompt = f"""
         Sie agieren als hochqualifizierter Karriereberater und Texter, spezialisiert auf den Schweizer Arbeitsmarkt. Ihr Ziel ist es, aus den Rohdaten einen authentischen, überzeugenden und professionellen Lebenslauf in der **Ich-Perspektive** zu erstellen. Ihre gesamte Ausgabe MUSS ein einziges, valides JSON-Objekt sein (Schlüsselnamen bleiben auf Englisch).
 
@@ -153,32 +154,31 @@ def get_prompts(language, extracted_data, tone_selection, consolidated_text):
             - **If 'Technical / Expert':**
                 - **Core Focus:** Deep domain knowledge, technical proficiency, and complex problem-solving.
                 - **Language Style:** Precise, specific, and objective. Use technical verbs like "engineered," "architected," "analysed," "optimised," "developed."
-                - **Emphasize:** Specific technologies (e.g., Python, AWS, SAP), methodologies (e.g., Agile, ITIL), certifications, system architecture, and data analysis. Achievements should highlight technical solutions to business problems.
+                - **Emphasize:** Specific technologies, methodologies, certifications, system architecture, and data analysis.
 
             - **If 'Sales / Commercial':**
                 - **Core Focus:** Revenue generation, market growth, client acquisition, and relationship management.
                 - **Language Style:** Persuasive, energetic, and results-oriented. Use action verbs like "generated," "secured," "negotiated," "exceeded".
-                - **Emphasize:** Quantifiable sales results (CHF, %), quota attainment (e.g., "achieved 120% of target"), new market entry, key account growth, and building commercial partnerships.
+                - **Emphasize:** Quantifiable sales results (CHF, %), quota attainment, new market entry, and key account growth.
 
             - **If 'Project Management':**
                 - **Core Focus:** On-time and on-budget delivery, process efficiency, stakeholder communication, and risk mitigation.
                 - **Language Style:** Structured, clear, and methodical. Use verbs like "delivered," "managed," "coordinated," "planned," "executed."
-                - **Emphasize:** Project scope (budget, timeline, team size), methodologies (Agile, Prince2, PMP), risk management frameworks, and successful project completion metrics.
+                - **Emphasize:** Project scope (budget, timeline, team size), methodologies (Agile, Prince2, PMP), and successful project completion metrics.
 
             - **If 'General Professional':**
                 - **Core Focus:** Competence, reliability, effective collaboration, and successful execution of duties.
-                - **Language Style:** Clear, professional, and balanced. Avoids deep jargon from any specific field. Use solid action verbs like "managed," "supported," "improved," "organised," "contributed."
-                - **Emphasize:** Key responsibilities, successful teamwork, process improvements, and consistent performance.
+                - **Language Style:** Clear, professional, and balanced. Use solid action verbs like "managed," "supported," "improved," "organised," "contributed."
+                - **Emphasize:** Key responsibilities, successful teamwork, and process improvements.
 
         **3. Professional Summary (`summary_paragraphs`):**
         - **Paragraph 1 (Strictly Two Sentences, max 310 chars, quantify whenever possible):**
             - **Sentence 1:** Define the candidate's professional identity (e.g., "Commercial Leader with 15 years of experience in the biotech sector.").
             - **Sentence 2:** State their single most impressive and quantifiable achievement from their recent career (e.g., "Most recently, drove regional growth by 18% through the implementation of a new sales training curriculum.").
         - **Paragraph 2 (First-person "I", max 160 chars):**
-            - Synthesize the candidate's core motivators and values. If no information is provided, create a strong, fitting paragraph based on their profile. **Strictly adhere to a maximum of 160 characters (including spaces).**
+            - Synthesize the candidate's core motivators and values. **Strictly adhere to a maximum of 160 characters (including spaces).**
 
         **4. Work Experience (`work_experience`) - MAX 10:**
-        - Select a maximum of 10 work experiences, prioritizing the most recent and relevant ones.
         - Rename keys: `job_title` to `title`, `from_date` to `from`, `to_date` to `to`.
         - **Responsibility:** Write 1-2 concise, factual sentences for the role's scope.
         - **Achievements (CRITICAL - Narrative Rewrite):**
@@ -188,7 +188,7 @@ def get_prompts(language, extracted_data, tone_selection, consolidated_text):
 
         **5. Skills Selection & Prioritization (CRITICAL - MAX 6):**
         - Analyze all skills from the RAW data and cross-reference with the job description in the FULL CONTEXT.
-        - **Select the six (6) most relevant and impactful skills.** The final list must contain a maximum of 6 strings.
+        - **Select the six (6) most relevant and impactful skills.**
 
         **6. Language & Hobbies (CRITICAL - MAX 6 each):**
         - For `languages`, select a maximum of 6, prioritizing the highest proficiency. The `level` value must be one of: 'Native', 'Fluent', 'Advanced', 'Basic', or a CEFR level (A1-C2).
@@ -199,12 +199,12 @@ def get_prompts(language, extracted_data, tone_selection, consolidated_text):
         - Rename `graduation_date` to `graduation`.
 
         **8. Negative Constraints (AVOID AT ALL COSTS):**
-        - No Passive Voice. Avoid the forbidden buzzword list.
-        - Strictly avoid: seasoned, results-driven, dynamic, motivated, proven track record, passionate, innovative, creative thinker, strategic thinker, go-getter, self-starter, team player, leader of change, strong communicator, influencer, people-oriented, cross-functional collaborator, change agent, highly accomplished, expert in.
+        - No Passive Voice. Strictly avoid: seasoned, results-driven, dynamic, motivated, proven track record, passionate, innovative, creative thinker, strategic thinker, go-getter, self-starter, team player, leader of change, strong communicator, influencer, people-oriented, cross-functional collaborator, change agent, highly accomplished, expert in.
         - Demonstrate qualities, do not state them.
 
         **Final Instruction:** Your entire output MUST be a single, valid JSON object conforming to the final structure and its limits.
         """
+
     return extraction_prompt, rewriting_prompt
 
 
@@ -228,8 +228,10 @@ def robust_json_parser(raw_text_from_ai):
         start = clean_text.find('{')
         end = clean_text.rfind('}') + 1
         if start == -1 or end == 0: raise ValueError("JSON object not found.")
-        return json.loads(clean_text[start:end])
-    except Exception as e:
+        clean_json_text = clean_text[start:end]
+        clean_json_text = re.sub(r',\s*([}\]])', r'\1', clean_json_text)
+        return json.loads(clean_json_text)
+    except (ValueError, json.JSONDecodeError) as e:
         st.error(f"🔴 Error: Could not parse the AI's response. Details: {e}")
         st.text_area("Raw AI output:", raw_text_from_ai, height=200)
         return None
@@ -238,7 +240,8 @@ def extract_raw_data(prompt):
     """AI STEP 1: Extracts raw data."""
     try:
         response = model.generate_content(prompt)
-        return robust_json_parser(response.text) if response.parts else None
+        if not response.parts: return None
+        return robust_json_parser(response.text)
     except Exception as e:
         st.error(f"An unexpected error occurred during data extraction: {e}")
         return None
@@ -247,42 +250,48 @@ def rewrite_extracted_data(prompt):
     """AI STEP 2: Rewrites data using your final, locked-in expert prompt."""
     try:
         response = model.generate_content(prompt)
-        return robust_json_parser(response.text) if response.parts else None
+        if not response.parts: return None
+        return robust_json_parser(response.text)
     except Exception as e:
         st.error(f"An unexpected error occurred during data rewriting: {e}")
         return None
 
-def generate_word_document(context, language, uploaded_image_data):
+def generate_word_document(context, language):
     """
-    Renders the final context into the correct Word template.
-    This version correctly handles the in-memory image by wrapping it in a
-    standard BytesIO object, which prevents file corruption.
+    Renders the final context into the correct Word template based on language.
     """
     try:
-        template_name = "CVTemplate_Python_DE.docx" if language == "German" else "CVTemplate_Python_EN.docx"
+        if language == "German":
+            template_name = "CVTemplate_Python_DE.docx"
+        else: # Default to English
+            template_name = "CVTemplate_Python_EN.docx"
             
         if not os.path.exists(template_name):
             st.error(f"🔴 Critical Error: The template file '{template_name}' was not found.")
+            st.info(f"Please make sure you have two templates: 'CVTemplate_Python_EN.docx' and 'CVTemplate_Python_DE.docx' in the same folder as the script.")
             return None
         
         doc = DocxTemplate(template_name)
 
-        # THE FINAL FIX FOR IMAGE CORRUPTION
-        if uploaded_image_data:
-            # Convert the uploaded file's raw bytes into a standard in-memory binary stream
-            image_stream = io.BytesIO(uploaded_image_data.getvalue())
-            image_to_insert = InlineImage(doc, image_stream, width=Mm(35))
-            context['profile_pic'] = image_to_insert
+        def safe_escape_data(data):
+            if isinstance(data, dict):
+                return {k: safe_escape_data(v) for k, v in data.items()}
+            elif isinstance(data, list):
+                return [safe_escape_data(item) for item in data]
+            elif isinstance(data, str):
+                return escape(data)
+            else:
+                return data
 
-        jinja_env = jinja2.Environment(autoescape=True)
-        doc.render(context, jinja_env=jinja_env)
+        safe_context = safe_escape_data(context)
+        doc.render(safe_context)
         
         doc_buffer = io.BytesIO()
         doc.save(doc_buffer)
         doc_buffer.seek(0)
         return doc_buffer
     except Exception as e:
-        st.error(f"Error generating the Word document: {e}. Check your Word template syntax and Alt Text tag.")
+        st.error(f"Error generating the Word document: {e}. Check your Word template syntax.")
         return None
 
 # -------------------------------------
@@ -313,34 +322,39 @@ def run_the_app():
             for file in uploaded_files:
                 text = extract_text_from_file(file)
                 if text: all_texts.append(text)
-        if not any(t.strip() for t in all_texts if t):
+        if not all_texts:
             st.warning("Please upload at least one file or provide some text.")
-            return
-
-        consolidated_text = "\n\n--- DOCUMENT SEPARATOR ---\n\n".join(filter(None, all_texts))
-        extraction_prompt, _ = get_prompts(language_selection, {}, "", consolidated_text)
-        with st.spinner("🤖 Step 1/2: Extracting raw data from documents..."):
-            extracted_data = extract_raw_data(extraction_prompt)
-        if extracted_data:
-            st.info("✅ Raw data extracted. Now applying expert rewriting rules...")
-            _, rewriting_prompt = get_prompts(language_selection, extracted_data, tone_selection, consolidated_text)
-            spinner_text = (f"🤖 Schritt 2/2: Inhalte werden auf Deutsch für eine '{tone_selection}'-Rolle optimiert..." if language_selection == "German" 
-                            else f"🤖 Step 2/2: Rewriting content and selecting top items for a '{tone_selection}' role...")
-            with st.spinner(spinner_text):
-                rewritten_data = rewrite_extracted_data(rewriting_prompt)
-            if rewritten_data:
-                st.session_state.cv_data = rewritten_data
-                st.success("✨ Success! The form is filled. Review and edit the content below.")
-                st.balloons()
-            else: st.error("AI Rewriting Failed.")
-        else: st.error("AI Extraction Failed.")
+        else:
+            consolidated_text = "\n\n--- DOCUMENT SEPARATOR ---\n\n".join(all_texts)
+            
+            extraction_prompt, _ = get_prompts(language_selection, {}, "", consolidated_text)
+            
+            with st.spinner("🤖 Step 1/2: Extracting raw data from documents..."):
+                extracted_data = extract_raw_data(extraction_prompt)
+            
+            if extracted_data:
+                st.info("✅ Raw data extracted. Now applying expert rewriting rules...")
+                
+                _, rewriting_prompt = get_prompts(language_selection, extracted_data, tone_selection, consolidated_text)
+                
+                spinner_text = (f"🤖 Schritt 2/2: Inhalte werden auf Deutsch für eine '{tone_selection}'-Rolle optimiert..." if language_selection == "German" 
+                              else f"🤖 Step 2/2: Rewriting content and selecting top items for a '{tone_selection}' role...")
+                
+                with st.spinner(spinner_text):
+                    rewritten_data = rewrite_extracted_data(rewriting_prompt)
+                    if rewritten_data:
+                        st.session_state.cv_data = rewritten_data
+                        success_text = "✨ Erfolg! Das Formular ist ausgefüllt." if language_selection == "German" else "✨ Success! The form is filled."
+                        st.success(f"{success_text} Review and edit the content below.")
+                        st.balloons()
+                    else: st.error("AI Rewriting Failed.")
+            else: st.error("AI Extraction Failed.")
 
     if st.session_state.cv_data:
         st.header("Step 2: Review, Edit, and Generate")
         data = st.session_state.cv_data
         with st.form(key='cv_editor_form'):
             with st.expander("👤 Personal Information", expanded=True):
-                st.file_uploader("Upload Profile Picture (will replace placeholder in template)", type=["png", "jpg", "jpeg"], key="profile_picture_uploader")
                 p_info = data.get('personal_info', {})
                 st.text_input("Full Name", p_info.get('NAME', ''), key="p_NAME")
                 st.text_input("Target Job Title", p_info.get('JOB_TITLE', ''), key="p_JOB_TITLE")
@@ -390,8 +404,6 @@ def run_the_app():
             submit_button = st.form_submit_button(label='📄 Generate Final Word Document', use_container_width=True)
 
         if submit_button:
-            uploaded_pic = st.session_state.get('profile_picture_uploader')
-            
             final_context = {}
             final_context['NAME'] = st.session_state.get('p_NAME', '')
             final_context['JOB_TITLE'] = st.session_state.get('p_JOB_TITLE', '')
@@ -437,12 +449,21 @@ def run_the_app():
             final_context['hobbies'] = [h.strip() for h in st.session_state.get('hobbies', '').split('\n') if h.strip()][:6]
 
             with st.spinner("Creating your polished Word document..."):
-                doc_buffer = generate_word_document(final_context, language_selection, uploaded_pic)
+                doc_buffer = generate_word_document(final_context, language_selection)
                 if doc_buffer:
                     st.success("✅ Document Generated!")
-                    file_name = (f"Optimierter_Lebenslauf_{final_context.get('NAME', 'CV')}.docx" if language_selection == "German" else f"Enhanced_CV_{final_context.get('NAME', 'CV')}.docx")
+                    
+                    file_name = (f"Optimierter_Lebenslauf_{final_context.get('NAME', 'CV')}.docx" if language_selection == "German" 
+                                 else f"Enhanced_CV_{final_context.get('NAME', 'CV')}.docx")
                     label = "📥 Ihren optimierten Lebenslauf herunterladen" if language_selection == "German" else "📥 Download Your Enhanced CV"
-                    st.download_button(label=label, data=doc_buffer, file_name=file_name, mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document", use_container_width=True)
+
+                    st.download_button(
+                        label=label, 
+                        data=doc_buffer, 
+                        file_name=file_name, 
+                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document", 
+                        use_container_width=True
+                    )
 
 # -------------------------------------
 # 5. PASSWORD CHECK
