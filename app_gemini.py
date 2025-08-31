@@ -11,7 +11,7 @@ from docx.shared import Mm
 import io
 import json
 import re
-import jinja2  # <-- CRITICAL: Import Jinja2
+import jinja2
 
 # -------------------------------------
 # 2. GEMINI API CONFIGURATION
@@ -226,7 +226,6 @@ def rewrite_extracted_data(prompt):
         st.error(f"An unexpected error occurred during data rewriting: {e}")
         return None
 
-# --- CRITICAL CHANGE: CORRECTED DOCUMENT GENERATION LOGIC ---
 def generate_word_document(context, language, uploaded_image_data):
     """
     Renders the final context into the correct Word template, including the profile picture.
@@ -245,7 +244,6 @@ def generate_word_document(context, language, uploaded_image_data):
             st.info(f"Please make sure you have two templates: 'CVTemplate_Python_EN.docx' and 'CVTemplate_Python_DE.docx' in the same folder as the script.")
             return None
         
-        # Load the template without any special arguments
         doc = DocxTemplate(template_name)
 
         if uploaded_image_data:
@@ -256,11 +254,10 @@ def generate_word_document(context, language, uploaded_image_data):
             image_to_insert = InlineImage(doc, temp_image_path, width=Mm(35))
             context['profile_pic'] = image_to_insert
 
-        # --- THE CORRECT METHOD ---
-        # 1. Create a Jinja2 environment with autoescape enabled
+        # --- THIS IS THE CRITICAL FIX FOR FILE CORRUPTION ---
         jinja_env = jinja2.Environment(autoescape=True)
-        # 2. Pass this environment to the render method
         doc.render(context, jinja_env=jinja_env)
+        # --- END OF FIX ---
         
         doc_buffer = io.BytesIO()
         doc.save(doc_buffer)
