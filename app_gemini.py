@@ -27,133 +27,6 @@ except Exception as e:
 # 3. HELPER FUNCTIONS
 # -------------------------------------
 
-def get_prompts(language, extracted_data, tone_selection, consolidated_text):
-    """
-    Returns the appropriate extraction and rewriting prompts based on the selected language.
-    """
-    if language == "German":
-        # --- THIS IS THE NEW, CORRECTED GERMAN EXTRACTION PROMPT ---
-        extraction_prompt = f"""
-        Sie sind eine Datenextraktions-Engine. Ihr einziger Zweck ist es, den folgenden Text zu lesen und alle relevanten Informationen in ein sauberes, valides JSON-Objekt zu extrahieren. Schreiben Sie den Text NICHT um, schmücken Sie ihn nicht aus und verändern Sie ihn nicht. Konzentrieren Sie sich auf die vollständige und genaue Extraktion.
-
-        **Anforderungen an die JSON-Struktur (Schlüsselnamen müssen auf Englisch bleiben):**
-        1.  `personal_info`: Extrahieren Sie "name", "job_title" (aus dem Lebenslauf), "phone", "email", "city", "zip", "country", "linkedin_url".
-        2.  `summary_paragraphs`: Extrahieren Sie alle Zusammenfassungs- oder "Über mich"-Absätze als eine Liste von Strings.
-        3.  `languages`: Extrahieren Sie alle Sprachen und deren Kompetenzniveaus in eine Liste von Objekten, jedes mit den Schlüsseln "language" und "level".
-        4.  `skills`: Extrahieren Sie alle einzelnen Fähigkeiten als eine Liste von einzelnen String-Schlüsselwörtern.
-        5.  `work_experience`: Extrahieren Sie JEDEN Jobeintrag. Jeder muss ein Objekt mit "company", "from_date", "to_date", "job_title", "responsibility" und "achievements" (als eine Liste von Strings) sein.
-        6.  `education`: Extrahieren Sie JEDEN Bildungseintrag. Jeder muss ein Objekt mit "degree", "graduation_date", "university", "university_location", "university_country" sein.
-        7.  `hobbies`: Extrahieren Sie alle Hobbys als eine Liste von einzelnen String-Schlüsselwörtern.
-
-        Wenn Informationen für einen Schlüssel nicht gefunden werden, verwenden Sie einen leeren String "" oder eine leere Liste []. Ihre gesamte Ausgabe muss NUR das JSON-Objekt sein.
-
-        ZUSAMMENGEFASSTER EINGABETEXT:
-        ---
-        {consolidated_text}
-        ---
-        """
-        
-        tone_map_de = {
-            "Executive / Leadership": "Führungskraft / Management",
-            "Technical / Expert": "Technischer Experte / Spezialist",
-            "Sales / Commercial": "Vertrieb / Kommerziell",
-            "Project Management": "Projektmanagement",
-            "General Professional": "Allgemein / Fachlich"
-        }
-        german_tone = tone_map_de.get(tone_selection, "Allgemein / Fachlich")
-
-        rewriting_prompt = f"""
-        Sie agieren als hochqualifizierter Karriereberater und Texter, spezialisiert auf den Schweizer Arbeitsmarkt. Ihr Ziel ist es, aus den Rohdaten einen authentischen, überzeugenden und professionellen Lebenslauf in der **Ich-Perspektive** zu erstellen. Ihre gesamte Ausgabe MUSS ein einziges, valides JSON-Objekt sein (Schlüsselnamen bleiben auf Englisch).
-        ### ROHDATEN (INPUT) ### --- {json.dumps(extracted_data, indent=2)} ---
-        ### VOLLSTÄNDIGER KONTEXT (INPUT, enthält Lebenslauf & potentielle Stellenbeschreibung) ### --- {consolidated_text} ---
-        ### DETAILLIERTE ANWEISUNGEN ###
-        **1. Kernanalyse & `JOB_TITLE` (KRITISCH):**
-        - Analysieren Sie den VOLLSTÄNDIGEN KONTEXT, um eine potentielle Stellenbeschreibung zu identifizieren.
-        - **`JOB_TITLE` (Ziel-Jobtitel):** Wenn eine Stellenbeschreibung vorhanden ist, leiten Sie den ZIEL-JOBTITEL daraus ab. Andernfalls erstellen Sie eine professionelle, zukunftsorientierte Überschrift basierend auf der letzten Position des Kandidaten.
-        - **`personal_info.NAME`:** Schreiben Sie den Namen in Grossbuchstaben.
-        **2. Ton und Sprache (KRITISCH):**
-        - **Sprache:** Ausschliesslich Schweizer Hochdeutsch (kein 'ß', immer 'ss').
-        - **Perspektive:** Das gesamte Dokument wird aus der Ich-Perspektive formuliert.
-        - **Dynamischer Ton basierend auf der Wahl '{german_tone}'**: Passen Sie Vokabular und Schwerpunkte exakt an:
-            - **'Führungskraft / Management':** Fokus auf Strategie, Vision, GuV-Verantwortung, Teamführung. Verben wie "leitete", "steuerte", "orchestrierte".
-            - **'Technischer Experte / Spezialist':** Fokus auf Fachexpertise, technische Kompetenz, komplexe Problemlösung. Verben wie "entwickelte", "konzipierte", "analysierte".
-            - **'Vertrieb / Kommerziell':** Fokus auf Umsatzgenerierung, Marktwachstum, Kundenakquise. Verben wie "akquirierte", "erzielte", "übertraf".
-            - **'Projektmanagement':** Fokus auf termingerechte und budgetkonforme Lieferung, Prozesseffizienz. Verben wie "lieferte", "managte", "koordinierte".
-            - **'Allgemein / Fachlich':** Fokus auf Kompetenz, Zuverlässigkeit, Zusammenarbeit. Verben wie "unterstützte", "verbesserte", "organisierte".
-        **3. Kurzprofil (`summary_paragraphs`):**
-        - **Absatz 1 (2 Sätze, max. 310 Zeichen):**
-            - **Satz 1:** Definiert die professionelle Identität als prägnante Überschrift. Beginnen Sie NICHT mit "Ich bin". **Beispiel: "Vertriebsleiter mit 15 Jahren Erfahrung im Aufbau von Kundenbeziehungen in der Pharmaindustrie."**
-            - **Satz 2:** Beschreibt meinen eindrücklichsten, quantifizierbaren Erfolg, formuliert in der Ich-Perspektive. **Beispiel: "Zuletzt habe ich das regionale Wachstum um 18 % vorangetrieben, indem ich ein neues Vertriebscurriculum implementierte."**
-        - **Absatz 2 (Ich-Perspektive, max. 160 Zeichen):**
-            - Formuliert meine Kernmotivation und Werte. **Beispiel: "Meine Motivation liegt darin, komplexe Herausforderungen durch datengestützte Strategien zu lösen."**
-        **4. Berufserfahrung (`work_experience`) - MAX 10:**
-        - **Schlüssel:** Benennen Sie `job_title` zu `title`, `from_date` zu `from`, `to_date` zu `to` um.
-        - **Erfolge (`achievements`) - KRITISCH & GLEICHWERTIG ZUR ENGLISCHEN VERSION:**
-            - Formulieren Sie 1 bis 3 narrative Erfolgssätze pro Position in der Ich-Perspektive.
-            - **Beginnen Sie nicht jeden Satz mit "Ich"**. Variieren Sie den Satzbau.
-            - Jeder Satz MUSS die Struktur **"Ich habe [A: messbares Ergebnis] erreicht, indem ich [B: konkrete Handlung] durchführte, was zu [C: geschäftlicher Nutzen] führte."** befolgen.
-            - **Ziel-Beispiel:** "Durch die Automatisierung der Reporting-Prozesse steigerte ich die Effizienz um 25 %, was wertvolle Ressourcen für strategische Aufgaben freisetzte."
-        **5. STRENG VERBOTENE BUZZWORDS:** `ergebnisorientiert`, `dynamisch`, `leidenschaftlich`, `Teamplayer`, `motiviert`, `proaktiv`, `Hands-on-Mentalität`, `innovativ`.
-        **Letzte Anweisung:** Halten Sie sich exakt an diese Regeln. Die Ausgabe muss ein einziges, valides JSON-Objekt sein.
-        """
-    else:  # Default to English
-        extraction_prompt = f"""
-        You are a data extraction engine. Your sole purpose is to read the following text and extract all relevant information into a clean, valid JSON object. Do NOT rewrite, embellish, or change any of the text. Focus on complete and accurate extraction. Use British English for any location names if variants exist.
-
-        **JSON Structure Requirements:**
-        1.  `personal_info`: Extract "name", "job_title" (from the CV), "phone", "email", "city", "zip", "country", "linkedin_url".
-        2.  `summary_paragraphs`: Extract any summary or "about me" paragraphs as a list of strings.
-        3.  `languages`: Extract all languages and their proficiency levels into a list of objects, each with "language" and "level" keys.
-        4.  `skills`: Extract all distinct skills as a list of individual string keywords.
-        5.  `work_experience`: Extract EVERY job entry. Each must be an object with "company", "from_date", "to_date", "job_title", "responsibility", and "achievements" (as a list of strings).
-        6.  `education`: Extract EVERY educational entry. Each must be an object with "degree", "graduation_date", "university", "university_location", "university_country".
-        7.  `hobbies`: Extract all hobbies as a list of individual string keywords.
-
-        If information for a key is not found, use an empty string "" or an empty list []. Your entire output must be ONLY the JSON object.
-
-        CONSOLIDATED INPUT TEXT:
-        ---
-        {consolidated_text}
-        ---
-        """
-        rewriting_prompt = f"""
-        You are a meticulous and precise professional CV editor for the Swiss market. Your task is to refine the provided raw JSON data into a polished, professional, and factual narrative that is strategically aligned with the target job, adhering to strict limits.
-        RAW EXTRACTED CV DATA (FROM STEP 1): --- {json.dumps(extracted_data, indent=2)} ---
-        FULL CONTEXT (includes CV and potential Job Description for analysis): --- {consolidated_text} ---
-        **JSON Structure Requirements for FINAL OUTPUT (Strictly follow this):**
-        The root JSON object must contain these keys: "personal_info", "summary_paragraphs", "languages", "skills", "work_experience", "education", "hobbies".
-        **Advanced Rewriting and Content Generation Rules:**
-        **1. Core Analysis & `JOB_TITLE` Determination (CRITICAL):**
-        - Analyze the FULL CONTEXT to identify if a future job description is present.
-        - **`JOB_TITLE` (Target Job Title):** If a job description exists, derive the `JOB_TITLE` from it. Otherwise, create a professional, grounded future headline based on their most recent role. This should be a strategic, forward-looking title.
-        - **`personal_info.NAME`:** Capitalize the person's name.
-        **2. Tone and Language (CRITICAL):**
-        - **Language:** Use British English.
-        - **Dynamic Tone Selection based on user's choice: '{tone_selection}'**:
-            - **'Executive / Leadership':** Focus on strategy, vision, P&L, team leadership. Use verbs like "directed," "governed," "spearheaded."
-            - **'Technical / Expert':** Focus on deep domain knowledge, technical proficiency. Use verbs like "engineered," "architected," "analysed."
-            - **'Sales / Commercial':** Focus on revenue generation, market growth, client acquisition. Use verbs like "generated," "secured," "negotiated."
-            - **'Project Management':** Focus on on-time and on-budget delivery, efficiency. Use verbs like "delivered," "managed," "coordinated."
-            - **'General Professional':** Focus on competence, reliability, effective collaboration. Use verbs like "managed," "supported," "improved."
-        **3. Professional Summary (`summary_paragraphs`):**
-        - **Paragraph 1 (Strictly Two Sentences, max 310 chars, quantify):**
-            - **Sentence 1:** Define the professional identity (e.g., "Commercial Leader with 15 years of experience...").
-            - **Sentence 2:** State their single most impressive and quantifiable achievement.
-        - **Paragraph 2 (First-person "I", max 160 chars):**
-            - Synthesize the candidate's core motivators and values.
-        **4. Work Experience (`work_experience`) - MAX 10:**
-        - Rename keys: `job_title` to `title`, `from_date` to `from`, `to_date` to `to`.
-        - **Achievements (CRITICAL - Narrative Rewrite):**
-            - Each sentence must follow the structure: **"I achieved [A: The Key Result] by doing [B: The Action/Method], resulting in [C: The Business Impact]."**
-            - **Target Example:** "By investigating and quality-checking over 2,000 ICSR cases..., I achieved a 15% reduction in data discrepancies and ensured 100% inspection-readiness."
-        **5. Negative Constraints (AVOID AT ALL COSTS):**
-        - No Passive Voice. Strictly avoid buzzwords like: seasoned, results-driven, dynamic, motivated, proven track record, passionate, team player, etc.
-        **Final Instruction:** Your entire output MUST be a single, valid JSON object.
-        """
-
-    return extraction_prompt, rewriting_prompt
-
-
 def extract_text_from_file(uploaded_file):
     """Extracts text from an uploaded PDF or DOCX file."""
     try:
@@ -182,8 +55,27 @@ def robust_json_parser(raw_text_from_ai):
         st.text_area("Raw AI output:", raw_text_from_ai, height=200)
         return None
 
-def extract_raw_data(prompt):
+def extract_raw_data(consolidated_text):
     """AI STEP 1: Extracts raw data."""
+    prompt = f"""
+    You are a data extraction engine. Your sole purpose is to read the following text and extract all relevant information into a clean, valid JSON object. Do NOT rewrite, embellish, or change any of the text. Focus on complete and accurate extraction. Use British English for any location names if variants exist.
+
+    **JSON Structure Requirements:**
+    1.  `personal_info`: Extract "name", "job_title" (from the CV), "phone", "email", "city", "zip", "country", "linkedin_url".
+    2.  `summary_paragraphs`: Extract any summary or "about me" paragraphs as a list of strings.
+    3.  `languages`: Extract all languages and their proficiency levels into a list of objects, each with "language" and "level" keys.
+    4.  `skills`: Extract all distinct skills as a list of individual string keywords.
+    5.  `work_experience`: Extract EVERY job entry. Each must be an object with "company", "from_date", "to_date", "job_title", "responsibility", and "achievements" (as a list of strings).
+    6.  `education`: Extract EVERY educational entry. Each must be an object with "degree", "graduation_date", "university", "university_location", "university_country".
+    7.  `hobbies`: Extract all hobbies as a list of individual string keywords.
+
+    If information for a key is not found, use an empty string "" or an empty list []. Your entire output must be ONLY the JSON object.
+
+    CONSOLIDATED INPUT TEXT:
+    ---
+    {consolidated_text}
+    ---
+    """
     try:
         response = model.generate_content(prompt)
         if not response.parts: return None
@@ -192,8 +84,109 @@ def extract_raw_data(prompt):
         st.error(f"An unexpected error occurred during data extraction: {e}")
         return None
 
-def rewrite_extracted_data(prompt):
+def rewrite_extracted_data(extracted_data, tone_selection, consolidated_text):
     """AI STEP 2: Rewrites data using your final, locked-in expert prompt."""
+    prompt = f"""
+    You are a meticulous and precise professional CV editor for the Swiss market. Your task is to refine the provided raw JSON data into a polished, professional, and factual narrative that is strategically aligned with the target job, adhering to strict limits.
+
+    RAW EXTRACTED CV DATA (FROM STEP 1):
+    ---
+    {json.dumps(extracted_data, indent=2)}
+    ---
+
+    FULL CONTEXT (includes CV and potential Job Description for analysis):
+    ---
+    {consolidated_text}
+    ---
+
+    **JSON Structure Requirements for FINAL OUTPUT (Strictly follow this):**
+    The root JSON object must contain these keys: "personal_info", "summary_paragraphs", "languages", "skills", "work_experience", "education", "hobbies".
+    - `personal_info`: Object with keys "NAME", "JOB_TITLE", "phone", "email", "city", "zip", "country", "Linkedin".
+    - `summary_paragraphs`: List of two strings.
+    - `languages`: List of objects, each with "language" and "level". **MAXIMUM of 6.**
+    - `skills`: List of strings. **MAXIMUM of 6.**
+    - `work_experience`: List of objects. **MAXIMUM of 10.**
+    - `education`: List of objects. **MAXIMUM of 10.**
+    - `hobbies`: List of strings. **MAXIMUM of 6.**
+
+    ---
+
+    **Advanced Rewriting and Content Generation Rules:**
+
+    **1. Core Analysis & `JOB_TITLE` Determination:**
+    - Analyze the FULL CONTEXT to identify if a future job description is present.
+    - **`JOB_TITLE`:** If a job description exists, derive the `JOB_TITLE` from it. Otherwise, create a professional, grounded future headline based on their most recent role.
+    - **`personal_info.NAME`:** Capitalize the person's name.
+
+    **2. Tone and Language (CRITICAL):**
+    - **Language:** Use British English.
+    - **Dynamic Tone Selection based on user's choice: '{tone_selection}'**. You must adapt your vocabulary, phrasing, and the aspects of the candidate's experience you highlight based on the following detailed rules:
+
+        - **If 'Executive / Leadership':**
+            - **Core Focus:** Strategy, vision, P&L responsibility, team leadership, and market-level impact.
+            - **Language Style:** Authoritative, decisive, and formal. Use verbs like "directed," "governed," "spearheaded," "orchestrated."
+            - **Emphasize:** Financial metrics (revenue, budget size, cost savings), team size and scope, strategic planning, and C-level stakeholder management.
+
+        - **If 'Technical / Expert':**
+            - **Core Focus:** Deep domain knowledge, technical proficiency, and complex problem-solving.
+            - **Language Style:** Precise, specific, and objective. Use technical verbs like "engineered," "architected," "analysed," "optimised," "developed."
+            - **Emphasize:** Specific technologies (e.g., Python, AWS, SAP), methodologies (e.g., Agile, ITIL), certifications, system architecture, and data analysis. Achievements should highlight technical solutions to business problems.
+
+        - **If 'Sales / Commercial':**
+            - **Core Focus:** Revenue generation, market growth, client acquisition, and relationship management.
+            - **Language Style:** Persuasive, energetic, and results-oriented. Use action verbs like "generated," "secured," "negotiated," "exceeded".
+            - **Emphasize:** Quantifiable sales results (CHF, %), quota attainment (e.g., "achieved 120% of target"), new market entry, key account growth, and building commercial partnerships.
+
+        - **If 'Project Management':**
+            - **Core Focus:** On-time and on-budget delivery, process efficiency, stakeholder communication, and risk mitigation.
+            - **Language Style:** Structured, clear, and methodical. Use verbs like "delivered," "managed," "coordinated," "planned," "executed."
+            - **Emphasize:** Project scope (budget, timeline, team size), methodologies (Agile, Prince2, PMP), risk management frameworks, and successful project completion metrics.
+
+        - **If 'General Professional':**
+            - **Core Focus:** Competence, reliability, effective collaboration, and successful execution of duties.
+            - **Language Style:** Clear, professional, and balanced. Avoids deep jargon from any specific field. Use solid action verbs like "managed," "supported," "improved," "organised," "contributed."
+            - **Emphasize:** Key responsibilities, successful teamwork, process improvements, and consistent performance.
+
+    **3. Professional Summary (`summary_paragraphs`):**
+    - **Paragraph 1 (Strictly Two Sentences, max 310 chars, quantify whenever possible):**
+        - **Sentence 1:** Define the candidate's professional identity (e.g., "Commercial Leader with 15 years of experience in the biotech sector.").
+        - **Sentence 2:** State their single most impressive and quantifiable achievement from their recent career (e.g., "Most recently, drove regional growth by 18% through the implementation of a new sales training curriculum.").
+    - **Paragraph 2 (First-person "I", max 160 chars):**
+        - Synthesize the candidate's core motivators and values. If no information is provided, create a strong, fitting paragraph based on their profile. **Strictly adhere to a maximum of 160 characters (including spaces).**
+
+    **4. Work experience (`work_experience`) - Max 10 entries:**
+- Prioritize the most recent and relevant roles.
+- Rename keys: `job_title` to `title`, `from_date` to `from`, `to_date` to `to`.
+- **Responsibility**: Write 1-2 concise, factual sentences describing the role's scope.
+- **Achievements (CRITICAL - Crafting Success Stories):**
+    - Rewrite the candidate's achievements from an ego perspective. Transform the simple bullet points into 1 to 3 powerful, personal success stories for each job.
+    - Each story must be a single, detailed sentence that clearly communicates the candidate's direct contribution and impact.
+    - **The Formula:** Every sentence must answer the questions: "What did I accomplish?", "How did I do it?", and "Why did it matter?".
+    - **Perfect Example of the Final Style:** "By investigating and quality-checking over 2,000 ICSR cases in compliance with GCP, FDA, and ICH guidelines, I achieved a 15% reduction in data discrepancies and ensured 100% inspection-readiness."
+    - **Mandatory Constraints:**
+        - Start with "I" or frame the sentence to be clearly from the first-person perspective (e.g., "By taking ownership of X, I achieved Y...").
+        - Ensure each sentence is comprehensive, approximately 25-45 words long.
+        - Use only the information available in the source text.
+
+        **5. Skills Selection & Prioritization (CRITICAL - MAX 6):**
+    - Analyze all skills from the RAW data and cross-reference with the job description in the FULL CONTEXT.
+    - **Select the six (6) most relevant and impactful skills.** The final list must contain a maximum of 6 strings.
+
+    **6. Language & Hobbies (CRITICAL - MAX 6 each):**
+    - For `languages`, select a maximum of 6, prioritizing the highest proficiency. The `level` value must be one of: 'Native', 'Fluent', 'Advanced', 'Basic', or a CEFR level (A1-C2).
+    - For `hobbies`, select a maximum of 6 relevant entries.
+
+    **7. Education (MAX 10):**
+    - Select a maximum of 10 education entries, prioritizing the most recent qualifications.
+    - Rename `graduation_date` to `graduation`.
+
+    **8. Negative Constraints (AVOID AT ALL COSTS):**
+    - No Passive Voice. Avoid the forbidden buzzword list.
+    - Strictly avoid: seasoned, results-driven, dynamic, motivated, proven track record, passionate, innovative, creative thinker, strategic thinker, go-getter, self-starter, team player, leader of change, strong communicator, influencer, people-oriented, cross-functional collaborator, change agent, highly accomplished, expert in.
+    - Demonstrate qualities, do not state them.
+
+    **Final Instruction:** Your entire output MUST be a single, valid JSON object conforming to the final structure and its limits.
+    """
     try:
         response = model.generate_content(prompt)
         if not response.parts: return None
@@ -202,34 +195,33 @@ def rewrite_extracted_data(prompt):
         st.error(f"An unexpected error occurred during data rewriting: {e}")
         return None
 
-def generate_word_document(context, language):
-    """
-    Renders the final context into the correct Word template based on language.
-    """
+def generate_word_document(context):
+    """Renders the final context dictionary into the Word template with correct escaping."""
     try:
-        if language == "German":
-            template_name = "CVTemplate_Python_DE.docx"
-        else: # Default to English
-            template_name = "CVTemplate_Python_EN.docx"
-            
-        if not os.path.exists(template_name):
-            st.error(f"🔴 Critical Error: The template file '{template_name}' was not found.")
-            st.info(f"Please make sure you have two templates: 'CVTemplate_Python_EN.docx' and 'CVTemplate_Python_DE.docx' in the same folder as the script.")
+        if not os.path.exists("CVTemplate_Python.docx"):
+            st.error("🔴 Critical Error: The template file 'CVTemplate_Python.docx' was not found.")
             return None
         
-        doc = DocxTemplate(template_name)
+        doc = DocxTemplate("CVTemplate_Python.docx")
 
+        # This helper function walks through all the data and makes only the strings safe for XML.
+        # It correctly handles '&', '<', '>' but does NOT touch '\n'.
         def safe_escape_data(data):
             if isinstance(data, dict):
                 return {k: safe_escape_data(v) for k, v in data.items()}
             elif isinstance(data, list):
                 return [safe_escape_data(item) for item in data]
             elif isinstance(data, str):
+                # Use the standard library's robust escape function.
                 return escape(data)
             else:
+                # Return numbers, booleans, etc. unchanged.
                 return data
 
+        # Create a new, clean context by running all the data through the safe escape function.
         safe_context = safe_escape_data(context)
+        
+        # Render the document with the cleaned data.
         doc.render(safe_context)
         
         doc_buffer = io.BytesIO()
@@ -256,11 +248,7 @@ def run_the_app():
     with col2:
         free_text_input = st.text_area("Paste additional text or notes here:", height=200)
 
-    col_tone, col_lang = st.columns(2)
-    with col_tone:
-        tone_selection = st.selectbox("Select the Desired Tone:", ("Executive / Leadership", "Technical / Expert", "Sales / Commercial", "Project Management", "General Professional"))
-    with col_lang:
-        language_selection = st.selectbox("Select the Output Language:", ("English", "German"))
+    tone_selection = st.selectbox( "Select the Desired Tone:", ("Executive / Leadership", "Technical / Expert", "Sales / Commercial", "Project Management", "General Professional"))
 
     if st.button("🚀 Analyse, Rewrite & Fill Form", type="primary", use_container_width=True):
         all_texts = [free_text_input] if free_text_input else []
@@ -272,26 +260,15 @@ def run_the_app():
             st.warning("Please upload at least one file or provide some text.")
         else:
             consolidated_text = "\n\n--- DOCUMENT SEPARATOR ---\n\n".join(all_texts)
-            
-            extraction_prompt, _ = get_prompts(language_selection, {}, "", consolidated_text)
-            
             with st.spinner("🤖 Step 1/2: Extracting raw data from documents..."):
-                extracted_data = extract_raw_data(extraction_prompt)
-            
+                extracted_data = extract_raw_data(consolidated_text)
             if extracted_data:
                 st.info("✅ Raw data extracted. Now applying expert rewriting rules...")
-                
-                _, rewriting_prompt = get_prompts(language_selection, extracted_data, tone_selection, consolidated_text)
-                
-                spinner_text = (f"🤖 Schritt 2/2: Inhalte werden auf Deutsch für eine '{tone_selection}'-Rolle optimiert..." if language_selection == "German" 
-                              else f"🤖 Step 2/2: Rewriting content and selecting top items for a '{tone_selection}' role...")
-                
-                with st.spinner(spinner_text):
-                    rewritten_data = rewrite_extracted_data(rewriting_prompt)
+                with st.spinner(f"🤖 Step 2/2: Rewriting content and selecting top items for a '{tone_selection}' role..."):
+                    rewritten_data = rewrite_extracted_data(extracted_data, tone_selection, consolidated_text)
                     if rewritten_data:
                         st.session_state.cv_data = rewritten_data
-                        success_text = "✨ Erfolg! Das Formular ist ausgefüllt." if language_selection == "German" else "✨ Success! The form is filled."
-                        st.success(f"{success_text} Review and edit the content below.")
+                        st.success("✨ Success! The form is filled. Review and edit the content below.")
                         st.balloons()
                     else: st.error("AI Rewriting Failed.")
             else: st.error("AI Extraction Failed.")
@@ -395,21 +372,10 @@ def run_the_app():
             final_context['hobbies'] = [h.strip() for h in st.session_state.get('hobbies', '').split('\n') if h.strip()][:6]
 
             with st.spinner("Creating your polished Word document..."):
-                doc_buffer = generate_word_document(final_context, language_selection)
+                doc_buffer = generate_word_document(final_context)
                 if doc_buffer:
                     st.success("✅ Document Generated!")
-                    
-                    file_name = (f"Optimierter_Lebenslauf_{final_context.get('NAME', 'CV')}.docx" if language_selection == "German" 
-                                 else f"Enhanced_CV_{final_context.get('NAME', 'CV')}.docx")
-                    label = "📥 Ihren optimierten Lebenslauf herunterladen" if language_selection == "German" else "📥 Download Your Enhanced CV"
-
-                    st.download_button(
-                        label=label, 
-                        data=doc_buffer, 
-                        file_name=file_name, 
-                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document", 
-                        use_container_width=True
-                    )
+                    st.download_button(label="📥 Download Your Enhanced CV", data=doc_buffer, file_name=f"Enhanced_CV_{final_context.get('NAME', 'CV')}.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document", use_container_width=True)
 
 # -------------------------------------
 # 5. PASSWORD CHECK
