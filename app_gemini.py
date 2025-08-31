@@ -255,7 +255,8 @@ def rewrite_extracted_data(prompt):
 def generate_word_document(context, language, uploaded_image_data):
     """
     Renders the final context into the correct Word template.
-    This version handles the image ENTIRELY IN MEMORY to prevent file corruption.
+    This version correctly handles the in-memory image by wrapping it in a
+    standard BytesIO object, which prevents file corruption.
     """
     try:
         template_name = "CVTemplate_Python_DE.docx" if language == "German" else "CVTemplate_Python_EN.docx"
@@ -266,9 +267,11 @@ def generate_word_document(context, language, uploaded_image_data):
         
         doc = DocxTemplate(template_name)
 
-        # THE FIX: Handle the image in-memory from the uploaded file object
+        # THE FINAL FIX FOR IMAGE CORRUPTION
         if uploaded_image_data:
-            image_to_insert = InlineImage(doc, uploaded_image_data, width=Mm(35))
+            # Convert the uploaded file's raw bytes into a standard in-memory binary stream
+            image_stream = io.BytesIO(uploaded_image_data.getvalue())
+            image_to_insert = InlineImage(doc, image_stream, width=Mm(35))
             context['profile_pic'] = image_to_insert
 
         jinja_env = jinja2.Environment(autoescape=True)
@@ -279,7 +282,7 @@ def generate_word_document(context, language, uploaded_image_data):
         doc_buffer.seek(0)
         return doc_buffer
     except Exception as e:
-        st.error(f"Error generating the Word document: {e}. This may be an issue with the Word template's syntax or the uploaded image file.")
+        st.error(f"Error generating the Word document: {e}. Check your Word template syntax and Alt Text tag.")
         return None
 
 # -------------------------------------
