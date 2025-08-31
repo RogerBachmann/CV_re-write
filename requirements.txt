@@ -1,6 +1,4 @@
 streamlit
 google-generativeai
 pdfplumber
-python-docx
 docx-template
-Jinja2==3.1.2
