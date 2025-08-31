@@ -31,6 +31,7 @@ except Exception as e:
 def get_prompts(language, extracted_data, tone_selection, consolidated_text):
     """
     Returns the appropriate extraction and rewriting prompts based on the selected language.
+    This version contains the full, unabridged prompts.
     """
     extraction_prompt = f"""
     You are a data extraction engine. Your sole purpose is to read the following text and extract all relevant information into a clean, valid JSON object. Do NOT rewrite, embellish, or change any of the text. Focus on complete and accurate extraction. Use British English for any location names if variants exist.
@@ -125,7 +126,7 @@ def get_prompts(language, extracted_data, tone_selection, consolidated_text):
         The root JSON object must contain these keys: "personal_info", "summary_paragraphs", "languages", "skills", "work_experience", "education", "hobbies".
         - `personal_info`: Object with keys "NAME", "JOB_TITLE", "phone", "email", "city", "zip", "country", "Linkedin".
         - `summary_paragraphs`: List of two strings.
-        - `languages`: List of objects. **MAXIMUM of 6.**
+        - `languages`: List of objects, each with "language" and "level". **MAXIMUM of 6.**
         - `skills`: List of strings. **MAXIMUM of 6.**
         - `work_experience`: List of objects. **MAXIMUM of 10.**
         - `education`: List of objects. **MAXIMUM of 10.**
@@ -142,16 +143,42 @@ def get_prompts(language, extracted_data, tone_selection, consolidated_text):
 
         **2. Tone and Language (CRITICAL):**
         - **Language:** Use British English.
-        - **Dynamic Tone Selection based on user's choice: '{tone_selection}'**. You must adapt your vocabulary, phrasing, and the aspects of the candidate's experience you highlight.
+        - **Dynamic Tone Selection based on user's choice: '{tone_selection}'**. You must adapt your vocabulary, phrasing, and the aspects of the candidate's experience you highlight based on the following detailed rules:
+
+            - **If 'Executive / Leadership':**
+                - **Core Focus:** Strategy, vision, P&L responsibility, team leadership, and market-level impact.
+                - **Language Style:** Authoritative, decisive, and formal. Use verbs like "directed," "governed," "spearheaded," "orchestrated."
+                - **Emphasize:** Financial metrics (revenue, budget size, cost savings), team size and scope, strategic planning, and C-level stakeholder management.
+
+            - **If 'Technical / Expert':**
+                - **Core Focus:** Deep domain knowledge, technical proficiency, and complex problem-solving.
+                - **Language Style:** Precise, specific, and objective. Use technical verbs like "engineered," "architected," "analysed," "optimised," "developed."
+                - **Emphasize:** Specific technologies (e.g., Python, AWS, SAP), methodologies (e.g., Agile, ITIL), certifications, system architecture, and data analysis. Achievements should highlight technical solutions to business problems.
+
+            - **If 'Sales / Commercial':**
+                - **Core Focus:** Revenue generation, market growth, client acquisition, and relationship management.
+                - **Language Style:** Persuasive, energetic, and results-oriented. Use action verbs like "generated," "secured," "negotiated," "exceeded".
+                - **Emphasize:** Quantifiable sales results (CHF, %), quota attainment (e.g., "achieved 120% of target"), new market entry, key account growth, and building commercial partnerships.
+
+            - **If 'Project Management':**
+                - **Core Focus:** On-time and on-budget delivery, process efficiency, stakeholder communication, and risk mitigation.
+                - **Language Style:** Structured, clear, and methodical. Use verbs like "delivered," "managed," "coordinated," "planned," "executed."
+                - **Emphasize:** Project scope (budget, timeline, team size), methodologies (Agile, Prince2, PMP), risk management frameworks, and successful project completion metrics.
+
+            - **If 'General Professional':**
+                - **Core Focus:** Competence, reliability, effective collaboration, and successful execution of duties.
+                - **Language Style:** Clear, professional, and balanced. Avoids deep jargon from any specific field. Use solid action verbs like "managed," "supported," "improved," "organised," "contributed."
+                - **Emphasize:** Key responsibilities, successful teamwork, process improvements, and consistent performance.
 
         **3. Professional Summary (`summary_paragraphs`):**
         - **Paragraph 1 (Strictly Two Sentences, max 310 chars, quantify whenever possible):**
-            - **Sentence 1:** Define the candidate's professional identity.
-            - **Sentence 2:** State their single most impressive and quantifiable achievement.
+            - **Sentence 1:** Define the candidate's professional identity (e.g., "Commercial Leader with 15 years of experience in the biotech sector.").
+            - **Sentence 2:** State their single most impressive and quantifiable achievement from their recent career (e.g., "Most recently, drove regional growth by 18% through the implementation of a new sales training curriculum.").
         - **Paragraph 2 (First-person "I", max 160 chars):**
-            - Synthesize the candidate's core motivators and values.
+            - Synthesize the candidate's core motivators and values. If no information is provided, create a strong, fitting paragraph based on their profile. **Strictly adhere to a maximum of 160 characters (including spaces).**
 
         **4. Work Experience (`work_experience`) - MAX 10:**
+        - Select a maximum of 10 work experiences, prioritizing the most recent and relevant ones.
         - Rename keys: `job_title` to `title`, `from_date` to `from`, `to_date` to `to`.
         - **Responsibility:** Write 1-2 concise, factual sentences for the role's scope.
         - **Achievements (CRITICAL - Narrative Rewrite):**
@@ -160,21 +187,24 @@ def get_prompts(language, extracted_data, tone_selection, consolidated_text):
             - **Target Example:** "By investigating and quality-checking over 2,000 ICSR cases in compliance with GCP, FDA, and ICH guidelines, I achieved a 15% reduction in data discrepancies and ensured 100% inspection-readiness."
 
         **5. Skills Selection & Prioritization (CRITICAL - MAX 6):**
-        - Analyze all skills and select the six (6) most relevant to the job description.
+        - Analyze all skills from the RAW data and cross-reference with the job description in the FULL CONTEXT.
+        - **Select the six (6) most relevant and impactful skills.** The final list must contain a maximum of 6 strings.
 
         **6. Language & Hobbies (CRITICAL - MAX 6 each):**
-        - For `languages`, select a maximum of 6.
-        - For `hobbies`, select a maximum of 6.
+        - For `languages`, select a maximum of 6, prioritizing the highest proficiency. The `level` value must be one of: 'Native', 'Fluent', 'Advanced', 'Basic', or a CEFR level (A1-C2).
+        - For `hobbies`, select a maximum of 6 relevant entries.
 
         **7. Education (MAX 10):**
+        - Select a maximum of 10 education entries, prioritizing the most recent qualifications.
         - Rename `graduation_date` to `graduation`.
 
         **8. Negative Constraints (AVOID AT ALL COSTS):**
-        - No Passive Voice. Strictly avoid buzzwords like: seasoned, results-driven, dynamic, motivated, proven track record, passionate, team player, etc.
+        - No Passive Voice. Avoid the forbidden buzzword list.
+        - Strictly avoid: seasoned, results-driven, dynamic, motivated, proven track record, passionate, innovative, creative thinker, strategic thinker, go-getter, self-starter, team player, leader of change, strong communicator, influencer, people-oriented, cross-functional collaborator, change agent, highly accomplished, expert in.
+        - Demonstrate qualities, do not state them.
 
         **Final Instruction:** Your entire output MUST be a single, valid JSON object conforming to the final structure and its limits.
         """
-
     return extraction_prompt, rewriting_prompt
 
 
@@ -198,10 +228,8 @@ def robust_json_parser(raw_text_from_ai):
         start = clean_text.find('{')
         end = clean_text.rfind('}') + 1
         if start == -1 or end == 0: raise ValueError("JSON object not found.")
-        clean_json_text = clean_text[start:end]
-        clean_json_text = re.sub(r',\s*([}\]])', r'\1', clean_json_text)
-        return json.loads(clean_json_text)
-    except (ValueError, json.JSONDecodeError) as e:
+        return json.loads(clean_text[start:end])
+    except Exception as e:
         st.error(f"🔴 Error: Could not parse the AI's response. Details: {e}")
         st.text_area("Raw AI output:", raw_text_from_ai, height=200)
         return None
@@ -210,8 +238,7 @@ def extract_raw_data(prompt):
     """AI STEP 1: Extracts raw data."""
     try:
         response = model.generate_content(prompt)
-        if not response.parts: return None
-        return robust_json_parser(response.text)
+        return robust_json_parser(response.text) if response.parts else None
     except Exception as e:
         st.error(f"An unexpected error occurred during data extraction: {e}")
         return None
@@ -220,55 +247,40 @@ def rewrite_extracted_data(prompt):
     """AI STEP 2: Rewrites data using your final, locked-in expert prompt."""
     try:
         response = model.generate_content(prompt)
-        if not response.parts: return None
-        return robust_json_parser(response.text)
+        return robust_json_parser(response.text) if response.parts else None
     except Exception as e:
         st.error(f"An unexpected error occurred during data rewriting: {e}")
         return None
 
 def generate_word_document(context, language, uploaded_image_data):
     """
-    Renders the final context into the correct Word template, including the profile picture.
-    This version uses a Jinja2 environment passed to the render() method, which is the
-    correct, backward-compatible way to enable auto-escaping and prevent file corruption.
+    Renders the final context into the correct Word template.
+    This version handles the image ENTIRELY IN MEMORY to prevent file corruption.
     """
-    temp_image_path = None
     try:
-        if language == "German":
-            template_name = "CVTemplate_Python_DE.docx"
-        else: # Default to English
-            template_name = "CVTemplate_Python_EN.docx"
+        template_name = "CVTemplate_Python_DE.docx" if language == "German" else "CVTemplate_Python_EN.docx"
             
         if not os.path.exists(template_name):
             st.error(f"🔴 Critical Error: The template file '{template_name}' was not found.")
-            st.info(f"Please make sure you have two templates: 'CVTemplate_Python_EN.docx' and 'CVTemplate_Python_DE.docx' in the same folder as the script.")
             return None
         
         doc = DocxTemplate(template_name)
 
+        # THE FIX: Handle the image in-memory from the uploaded file object
         if uploaded_image_data:
-            temp_image_path = f"temp_{uploaded_image_data.name}"
-            with open(temp_image_path, "wb") as f:
-                f.write(uploaded_image_data.getbuffer())
-            
-            image_to_insert = InlineImage(doc, temp_image_path, width=Mm(35))
+            image_to_insert = InlineImage(doc, uploaded_image_data, width=Mm(35))
             context['profile_pic'] = image_to_insert
 
-        # --- THIS IS THE CRITICAL FIX FOR FILE CORRUPTION ---
         jinja_env = jinja2.Environment(autoescape=True)
         doc.render(context, jinja_env=jinja_env)
-        # --- END OF FIX ---
         
         doc_buffer = io.BytesIO()
         doc.save(doc_buffer)
         doc_buffer.seek(0)
         return doc_buffer
     except Exception as e:
-        st.error(f"Error generating the Word document: {e}. Check your Word template syntax and Alt Text tag.")
+        st.error(f"Error generating the Word document: {e}. This may be an issue with the Word template's syntax or the uploaded image file.")
         return None
-    finally:
-        if temp_image_path and os.path.exists(temp_image_path):
-            os.remove(temp_image_path)
 
 # -------------------------------------
 # 4. THE MAIN APPLICATION LOGIC
@@ -298,27 +310,27 @@ def run_the_app():
             for file in uploaded_files:
                 text = extract_text_from_file(file)
                 if text: all_texts.append(text)
-        if not all_texts:
+        if not any(t.strip() for t in all_texts if t):
             st.warning("Please upload at least one file or provide some text.")
-        else:
-            consolidated_text = "\n\n--- DOCUMENT SEPARATOR ---\n\n".join(all_texts)
-            extraction_prompt, _ = get_prompts(language_selection, {}, "", consolidated_text)
-            with st.spinner("🤖 Step 1/2: Extracting raw data from documents..."):
-                extracted_data = extract_raw_data(extraction_prompt)
-            if extracted_data:
-                st.info("✅ Raw data extracted. Now applying expert rewriting rules...")
-                _, rewriting_prompt = get_prompts(language_selection, extracted_data, tone_selection, consolidated_text)
-                spinner_text = (f"🤖 Schritt 2/2: Inhalte werden auf Deutsch für eine '{tone_selection}'-Rolle optimiert..." if language_selection == "German" 
-                              else f"🤖 Step 2/2: Rewriting content and selecting top items for a '{tone_selection}' role...")
-                with st.spinner(spinner_text):
-                    rewritten_data = rewrite_extracted_data(rewriting_prompt)
-                    if rewritten_data:
-                        st.session_state.cv_data = rewritten_data
-                        success_text = "✨ Erfolg! Das Formular ist ausgefüllt." if language_selection == "German" else "✨ Success! The form is filled."
-                        st.success(f"{success_text} Review and edit the content below.")
-                        st.balloons()
-                    else: st.error("AI Rewriting Failed.")
-            else: st.error("AI Extraction Failed.")
+            return
+
+        consolidated_text = "\n\n--- DOCUMENT SEPARATOR ---\n\n".join(filter(None, all_texts))
+        extraction_prompt, _ = get_prompts(language_selection, {}, "", consolidated_text)
+        with st.spinner("🤖 Step 1/2: Extracting raw data from documents..."):
+            extracted_data = extract_raw_data(extraction_prompt)
+        if extracted_data:
+            st.info("✅ Raw data extracted. Now applying expert rewriting rules...")
+            _, rewriting_prompt = get_prompts(language_selection, extracted_data, tone_selection, consolidated_text)
+            spinner_text = (f"🤖 Schritt 2/2: Inhalte werden auf Deutsch für eine '{tone_selection}'-Rolle optimiert..." if language_selection == "German" 
+                            else f"🤖 Step 2/2: Rewriting content and selecting top items for a '{tone_selection}' role...")
+            with st.spinner(spinner_text):
+                rewritten_data = rewrite_extracted_data(rewriting_prompt)
+            if rewritten_data:
+                st.session_state.cv_data = rewritten_data
+                st.success("✨ Success! The form is filled. Review and edit the content below.")
+                st.balloons()
+            else: st.error("AI Rewriting Failed.")
+        else: st.error("AI Extraction Failed.")
 
     if st.session_state.cv_data:
         st.header("Step 2: Review, Edit, and Generate")
@@ -425,18 +437,9 @@ def run_the_app():
                 doc_buffer = generate_word_document(final_context, language_selection, uploaded_pic)
                 if doc_buffer:
                     st.success("✅ Document Generated!")
-                    
-                    file_name = (f"Optimierter_Lebenslauf_{final_context.get('NAME', 'CV')}.docx" if language_selection == "German" 
-                                 else f"Enhanced_CV_{final_context.get('NAME', 'CV')}.docx")
+                    file_name = (f"Optimierter_Lebenslauf_{final_context.get('NAME', 'CV')}.docx" if language_selection == "German" else f"Enhanced_CV_{final_context.get('NAME', 'CV')}.docx")
                     label = "📥 Ihren optimierten Lebenslauf herunterladen" if language_selection == "German" else "📥 Download Your Enhanced CV"
-
-                    st.download_button(
-                        label=label, 
-                        data=doc_buffer, 
-                        file_name=file_name, 
-                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document", 
-                        use_container_width=True
-                    )
+                    st.download_button(label=label, data=doc_buffer, file_name=file_name, mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document", use_container_width=True)
 
 # -------------------------------------
 # 5. PASSWORD CHECK
