@@ -11,7 +11,7 @@ from docx.shared import Mm
 import io
 import json
 import re
-# NOTE: No longer need 'escape' from xml.sax.saxutils
+import jinja2  # <-- CRITICAL: Import Jinja2
 
 # -------------------------------------
 # 2. GEMINI API CONFIGURATION
@@ -32,7 +32,6 @@ def get_prompts(language, extracted_data, tone_selection, consolidated_text):
     """
     Returns the appropriate extraction and rewriting prompts based on the selected language.
     """
-    # Extraction prompt remains the same
     extraction_prompt = f"""
     You are a data extraction engine. Your sole purpose is to read the following text and extract all relevant information into a clean, valid JSON object. Do NOT rewrite, embellish, or change any of the text. Focus on complete and accurate extraction. Use British English for any location names if variants exist.
 
@@ -231,7 +230,8 @@ def rewrite_extracted_data(prompt):
 def generate_word_document(context, language, uploaded_image_data):
     """
     Renders the final context into the correct Word template, including the profile picture.
-    This version uses the library's built-in auto-escaping for robustness.
+    This version uses a Jinja2 environment to enable auto-escaping, which is compatible
+    with all versions of the library.
     """
     temp_image_path = None
     try:
@@ -245,8 +245,10 @@ def generate_word_document(context, language, uploaded_image_data):
             st.info(f"Please make sure you have two templates: 'CVTemplate_Python_EN.docx' and 'CVTemplate_Python_DE.docx' in the same folder as the script.")
             return None
         
-        # --- CHANGE: Enable autoescape and remove manual escaping ---
-        doc = DocxTemplate(template_name, autoescape=True)
+        # --- CHANGE: Create a Jinja2 environment with autoescape enabled ---
+        jinja_env = jinja2.Environment(autoescape=True)
+        # --- CHANGE: Pass the environment to the DocxTemplate constructor ---
+        doc = DocxTemplate(template_name, jinja_env=jinja_env)
 
         if uploaded_image_data:
             temp_image_path = f"temp_{uploaded_image_data.name}"
@@ -256,8 +258,7 @@ def generate_word_document(context, language, uploaded_image_data):
             image_to_insert = InlineImage(doc, temp_image_path, width=Mm(35))
             context['profile_pic'] = image_to_insert
 
-        # The 'safe_escape_data' function has been removed.
-        # We now render the context directly, letting the library handle sanitization.
+        # Render the context. The Jinja2 environment will handle the escaping.
         doc.render(context)
         
         doc_buffer = io.BytesIO()
