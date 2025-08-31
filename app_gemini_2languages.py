@@ -32,29 +32,18 @@ def get_prompts(language, extracted_data, tone_selection, consolidated_text):
     Returns the appropriate extraction and rewriting prompts based on the selected language.
     """
     if language == "German":
-        # --- THIS IS THE NEW, RE-ENGINEERED GERMAN EXTRACTION PROMPT ---
+        # The robust, analytical extraction prompt for German
         extraction_prompt = f"""
         Sie sind eine hochintelligente Datenextraktions-Engine, spezialisiert auf die Analyse von deutschsprachigen Lebensläufen mit variierenden Layouts. Ihre Aufgabe ist es, den Text zu analysieren, seine Struktur zu verstehen und dann die Informationen präzise zu extrahieren.
 
         ### ANALYTISCHES FRAMEWORK (Zuerst denken, dann extrahieren)
-
-        **1. Layout-Analyse:**
-        - Identifizieren Sie zuerst die Struktur des Dokuments. Ist es einspaltig? Zweispaltig? Behandeln Sie jede Spalte als unabhängigen Container für zusammengehörige Informationen.
-
-        **2. Informations-Identifikation (Heuristiken):**
-        - **Name:** Suchen Sie nach dem prominentesten Text am Anfang von Seite 1. Heuristiken: grösste Schriftart, 2-3 grossgeschriebene Wörter, ist KEIN Titel wie "Lebenslauf".
-        - **Kontaktinformationen:** Suchen Sie nach Mustern. Ein '@' deutet auf eine E-Mail hin, eine Ländervorwahl (z.B. +41) auf eine Telefonnummer.
-
-        **3. Daten-Assoziation (KRITISCHE REGELN):**
-        - **Regel der Spalten-Integrität:** Daten in einer Spalte dürfen **NUR** mit anderen Daten in **DERSELBEN SPALTE** in Verbindung gebracht werden. Sie dürfen eine Datumsangabe aus einer schmalen linken Spalte NICHT einem Jobtitel in einer breiten rechten Spalte zuordnen, wenn dieser seine eigene Datumsangabe in der rechten Spalte hat.
-        - **Regel der flexiblen Nähe (Innerhalb einer Spalte):** Innerhalb einer einzelnen Spalte wird eine Datumsangabe dem plausibelsten Eintrag (z.B. einem Abschluss oder Jobtitel) zugeordnet, der sich unmittelbar **darüber, auf derselben Zeile oder unmittelbar darunter** befindet.
-
-        **4. Extraktion ins JSON-Format:**
-        - Füllen Sie erst nach der Analyse das unten stehende JSON-Objekt aus.
+        1.  **Layout-Analyse:** Identifizieren Sie zuerst die Struktur des Dokuments. Ist es einspaltig? Zweispaltig? Behandeln Sie jede Spalte als unabhängigen Container für zusammengehörige Informationen.
+        2.  **Informations-Identifikation (Heuristiken):** Suchen Sie nach dem prominentesten Text am Anfang von Seite 1 für den Namen. Suchen Sie nach Mustern wie '@' für E-Mail und '+' für Telefon.
+        3.  **Daten-Assoziation (KRITISCHE REGELN):** Daten in einer Spalte dürfen NUR mit anderen Daten in DERSELBEN SPALTE in Verbindung gebracht werden. Innerhalb einer Spalte gehört eine Datumsangabe zu dem Eintrag unmittelbar darüber, daneben oder darunter.
 
         **ANFORDERUNGEN AN DIE JSON-STRUKTUR (VOLLSTÄNDIGE LISTE):**
         1.  `personal_info`: Extrahieren Sie "name", "job_title", "phone", "email", "city", "zip", "country", "linkedin_url".
-        2.  `summary_paragraphs`: Extrahieren Sie Abschnitte wie "Profil" oder "Zusammenfassung".
+        2.  `summary_paragraphs`: Extrahieren Sie Abschnitte wie "Profil".
         3.  `languages`: Extrahieren Sie alle Sprachen und Niveaus.
         4.  `skills`: Extrahieren Sie alle Fähigkeiten.
         5.  `work_experience`: Extrahieren Sie JEDEN Jobeintrag. Jedes Objekt MUSS "company", "from_date", "to_date", "job_title", "responsibility", und "achievements" enthalten.
@@ -62,14 +51,9 @@ def get_prompts(language, extracted_data, tone_selection, consolidated_text):
         7.  `hobbies`: Extrahieren Sie alle Hobbys.
 
         Wenn Informationen fehlen, verwenden Sie einen leeren String "" oder eine leere Liste []. Ihre gesamte Ausgabe muss NUR das JSON-Objekt sein.
-
-        ZUSAMMENGEFASSTER EINGABETEXT:
-        ---
-        {consolidated_text}
-        ---
+        ZUSAMMENGEFASSTER EINGABETEXT: --- {consolidated_text} ---
         """
         
-        # The rewriting prompt is correct and remains unchanged.
         tone_map_de = {
             "Executive / Leadership": "Führungskraft / Management",
             "Technical / Expert": "Technischer Experte / Spezialist",
@@ -78,57 +62,67 @@ def get_prompts(language, extracted_data, tone_selection, consolidated_text):
             "General Professional": "Allgemein / Fachlich"
         }
         german_tone = tone_map_de.get(tone_selection, "Allgemein / Fachlich")
+
         rewriting_prompt = f"""
-        Sie agieren als hochqualifizierter Karriereberater und Texter, spezialisiert auf den Schweizer Arbeitsmarkt. Ihr Ziel ist es, aus den Rohdaten einen authentischen, überzeugenden und professionellen Lebenslauf in der **Ich-Perspektive** zu erstellen. Ihre gesamte Ausgabe MUSS ein einziges, valides JSON-Objekt sein (Schlüsselnamen bleiben auf Englisch).
-        ### ROHDATEN (INPUT) ### --- {json.dumps(extracted_data, indent=2)} ---
-        ### VOLLSTÄNDIGER KONTEXT (INPUT, enthält Lebenslauf & potentielle Stellenbeschreibung) ### --- {consolidated_text} ---
-        ### DETAILLIERTE ANWEISUNGEN ###
-        **1. Kernanalyse & `JOB_TITLE` (KRITISCH):**
-        - Analysieren Sie den VOLLSTÄNDIGEN KONTEXT, um eine potentielle Stellenbeschreibung zu identifizieren.
-        - **`JOB_TITLE` (Ziel-Jobtitel):** Wenn eine Stellenbeschreibung vorhanden ist, leiten Sie den ZIEL-JOBTITEL daraus ab. Andernfalls erstellen Sie eine professionelle, zukunftsorientierte Überschrift basierend auf der letzten Position des Kandidaten.
+        Sie agieren als hochqualifizierter Karriereberater und Texter für den Schweizer Markt. Ihre Aufgabe ist es, die rohen JSON-Daten in eine ausgefeilte, professionelle und faktenbasierte Erzählung zu verwandeln, die strategisch auf die Zielposition ausgerichtet ist und strenge Limiten einhält.
+
+        ROHDATEN (VON SCHRITT 1): --- {json.dumps(extracted_data, indent=2)} ---
+        VOLLSTÄNDIGER KONTEXT (enthält Lebenslauf & potentielle Stellenbeschreibung): --- {consolidated_text} ---
+
+        **FINALE JSON-STRUKTUR (STRENG BEFOLGEN):**
+        Das JSON-Stammobjekt muss die Schlüssel "personal_info", "summary_paragraphs", "languages", "skills", "work_experience", "education", "hobbies" enthalten.
+        - `personal_info`: Objekt mit "NAME", "JOB_TITLE", "phone", "email", "city", "zip", "country", "Linkedin".
+        - `summary_paragraphs`: Liste mit zwei Strings.
+        - `languages`, `skills`, `hobbies`: Listen mit max. 6 Einträgen.
+        - `work_experience`, `education`: Listen mit max. 10 Einträgen.
+
+        ---
+        **Regeln für die Überarbeitung und Inhaltserstellung:**
+
+        **1. Kernanalyse & `JOB_TITLE`:**
+        - Analysieren Sie den VOLLSTÄNDIGEN KONTEXT. Wenn eine Stellenbeschreibung vorhanden ist, leiten Sie den **`JOB_TITLE` (Ziel-Jobtitel)** daraus ab. Andernfalls erstellen Sie eine professionelle, zukunftsorientierte Überschrift basierend auf der letzten Position.
         - **`personal_info.NAME`:** Schreiben Sie den Namen in Grossbuchstaben.
+
         **2. Ton und Sprache (KRITISCH):**
-        - **Sprache:** Ausschliesslich Schweizer Hochdeutsch (kein 'ß', immer 'ss').
-        - **Perspektive:** Das gesamte Dokument wird aus der Ich-Perspektive formuliert.
-        - **Dynamischer Ton basierend auf der Wahl '{german_tone}'**: Passen Sie Vokabular und Schwerpunkte exakt an:
-            - **'Führungskraft / Management':** Fokus auf Strategie, Vision, GuV-Verantwortung, Teamführung. Verben wie "leitete", "steuerte", "orchestrierte".
-            - **'Technischer Experte / Spezialist':** Fokus auf Fachexpertise, technische Kompetenz, komplexe Problemlösung. Verben wie "entwickelte", "konzipierte", "analysierte".
-            - **'Vertrieb / Kommerziell':** Fokus auf Umsatzgenerierung, Marktwachstum, Kundenakquise. Verben wie "akquirierte", "erzielte", "übertraf".
-            - **'Projektmanagement':** Fokus auf termingerechte und budgetkonforme Lieferung, Prozesseffizienz. Verben wie "lieferte", "managte", "koordinierte".
+        - **Sprache:** Schweizer Hochdeutsch (kein 'ß', immer 'ss').
+        - **Dynamischer Ton basierend auf der Wahl '{german_tone}'**: Passen Sie Vokabular, Formulierungen und Schwerpunkte exakt an:
+            - **'Führungskraft / Management':** Fokus auf Strategie, Vision, GuV-Verantwortung, Teamführung. Verben wie "leitete", "steuerte", "orchestrierte". Betonen Sie Finanzkennzahlen, Teamgrösse, Stakeholder-Management.
+            - **'Technischer Experte / Spezialist':** Fokus auf Fachexpertise, technische Kompetenz, Problemlösung. Verben wie "entwickelte", "konzipierte", "analysierte". Betonen Sie Technologien, Methoden, Zertifizierungen.
+            - **'Vertrieb / Kommerziell':** Fokus auf Umsatzgenerierung, Marktwachstum, Kundenakquise. Verben wie "akquirierte", "erzielte", "übertraf". Betonen Sie quantifizierbare Vertriebserfolge (CHF, %), Quotenerreichung.
+            - **'Projektmanagement':** Fokus auf termingerechte/budgetkonforme Lieferung, Prozesseffizienz. Verben wie "lieferte", "managte", "koordinierte". Betonen Sie Projektumfang, Methoden.
             - **'Allgemein / Fachlich':** Fokus auf Kompetenz, Zuverlässigkeit, Zusammenarbeit. Verben wie "unterstützte", "verbesserte", "organisierte".
+
         **3. Kurzprofil (`summary_paragraphs`):**
-        - **Absatz 1 (2 Sätze, max. 310 Zeichen):**
-            - **Satz 1:** Definiert die professionelle Identität als prägnante Überschrift. Beginnen Sie NICHT mit "Ich bin". **Beispiel: "Vertriebsleiter mit 15 Jahren Erfahrung im Aufbau von Kundenbeziehungen in der Pharmaindustrie."**
-            - **Satz 2:** Beschreibt meinen eindrücklichsten, quantifizierbaren Erfolg, formuliert in der Ich-Perspektive. **Beispiel: "Zuletzt habe ich das regionale Wachstum um 18 % vorangetrieben, indem ich ein neues Vertriebscurriculum implementierte."**
+        - **Absatz 1 (Genau 2 Sätze, max. 310 Zeichen, quantifizieren):**
+            - **Satz 1:** Definiert die professionelle Identität (z.B. "Vertriebsleiter mit 15 Jahren Erfahrung...").
+            - **Satz 2:** Nennt den wichtigsten quantifizierbaren Erfolg der jüngsten Karriere (z.B. "Zuletzt steigerte ich das regionale Wachstum um 18 %...").
         - **Absatz 2 (Ich-Perspektive, max. 160 Zeichen):**
-            - Formuliert meine Kernmotivation und Werte.
+            - Synthetisiert die Kernmotivation und Werte des Kandidaten.
+
         **4. Berufserfahrung (`work_experience`) - MAX 10:**
         - **Schlüssel:** Benennen Sie `job_title` zu `title`, `from_date` zu `from`, `to_date` zu `to` um.
-        - **Erfolge (`achievements`) - KRITISCH & GLEICHWERTIG ZUR ENGLISCHEN VERSION:**
-            - Jeder Satz MUSS die Struktur **"Ich habe [A: messbares Ergebnis] erreicht, indem ich [B: konkrete Handlung] durchführte, was zu [C: geschäftlicher Nutzen] führte."** befolgen.
-        **5. STRENG VERBOTENE BUZZWORDS:** `ergebnisorientiert`, `dynamisch`, `leidenschaftlich`, `Teamplayer`, `motiviert`, `proaktiv`, `Hands-on-Mentalität`.
-        **Letzte Anweisung:** Halten Sie sich exakt an diese Regeln. Die Ausgabe muss ein einziges, valides JSON-Objekt sein.
+        - **Verantwortung:** 1-2 prägnante, sachliche Sätze zum Aufgabenbereich.
+        - **Erfolge (KRITISCH - Erfolgsgeschichten formulieren):**
+            - Wandeln Sie die Stichpunkte in 1 bis 3 aussagekräftige Erfolgsgeschichten pro Job um.
+            - Jede Geschichte muss eine detaillierte, einzelne Antwort auf die Fragen "Was habe ich erreicht?", "Wie habe ich es getan?" und "Warum war es wichtig?" geben.
+            - **Perfektes Beispiel:** "Durch die Untersuchung und Qualitätsprüfung von über 2.000 ICSR-Fällen gemäss GCP-, FDA- und ICH-Richtlinien erreichte ich eine Reduzierung der Datendiskrepanzen um 15 % und stellte eine 100-prozentige Inspektionsbereitschaft sicher."
+            - **Obligatorische Vorgaben:** Formulieren Sie aus der Ich-Perspektive. Jeder Satz sollte ca. 25-45 Wörter lang sein.
+
+        **5. Negative Einschränkungen (UNBEDINGT VERMEIDEN):**
+        - Kein Passiv. Vermeiden Sie strikt: `ergebnisorientiert`, `dynamisch`, `leidenschaftlich`, `Teamplayer`, `motiviert`, `proaktiv`, `innovativ`, `strategischer Denker`.
+        - Zeigen Sie Qualitäten durch Fakten, benennen Sie sie nicht.
+
+        **Letzte Anweisung:** Ihre gesamte Ausgabe MUSS ein einziges, valides JSON-Objekt sein.
         """
     else:  # Default to English
-        # --- THIS IS THE NEW, RE-ENGINEERED ENGLISH EXTRACTION PROMPT ---
+        # The robust, analytical extraction prompt for English
         extraction_prompt = f"""
         You are a highly intelligent data extraction engine specializing in analyzing CVs with various layouts. Your task is to analyze the document's structure, understand the context, and then precisely extract the information.
 
         ### ANALYTICAL FRAMEWORK (Think First, Then Extract)
-
-        **1. Layout & Column Analysis:**
-        - First, identify the document's structure. Is it single-column? Two-column? **Treat columns as independent containers of related information.**
-
-        **2. Information Identification (Heuristics):**
-        - **Name:** Look for the most prominent text at the top of page 1. Heuristics: largest font size, 2-3 capitalized words, is NOT a title like "Curriculum Vitae" or "Resume".
-        - **Contact Info:** Look for patterns. An '@' symbol indicates an email, a country code (like +44 or +1) indicates a phone number.
-
-        **3. Data Association (CRITICAL RULES):**
-        - **Rule of Columnar Integrity:** Data in one column can **ONLY** be associated with other data in the **SAME COLUMN**. You **MUST NOT** associate a date from a narrow left column with a job title in a wide right column if that job title has its own date information within the right column.
-        - **Rule of Flexible Proximity (Within a Column):** Within a single column, a date is associated with the most plausible entry (like a degree or job title) that is immediately **above, on the same line, or immediately below it.**
-
-        **4. Extraction into JSON Format:**
-        - Only after performing this analysis, fill the JSON object below.
+        1.  **Layout & Column Analysis:** First, identify the document's structure. Is it single-column? Two-column? **Treat columns as independent containers of related information.**
+        2.  **Information Identification (Heuristics):** Look for the most prominent text at the top of page 1 for the name. Look for patterns like '@' for email and '+' for phone numbers.
+        3.  **Data Association (CRITICAL RULES):** Data in one column can **ONLY** be associated with other data in the **SAME COLUMN**. Within a single column, a date is associated with the most plausible entry (like a degree or job title) that is immediately **above, on the same line, or immediately below it.**
 
         **JSON STRUCTURE REQUIREMENTS (COMPLETE LIST):**
         1.  `personal_info`: Extract "name", "job_title", "phone", "email", "city", "zip", "country", "linkedin_url".
@@ -140,40 +134,81 @@ def get_prompts(language, extracted_data, tone_selection, consolidated_text):
         7.  `hobbies`: Extract all hobbies.
 
         If information is missing, use an empty string "" or an empty list []. Your entire output must be ONLY the JSON object.
+        CONSOLIDATED INPUT TEXT: --- {consolidated_text} ---
+        """
+        # The excellent, full rewrite prompt from your working script
+        rewriting_prompt = f"""
+        You are a meticulous and precise professional CV editor for the Swiss market. Your task is to refine the provided raw JSON data into a polished, professional, and factual narrative that is strategically aligned with the target job, adhering to strict limits.
 
-        CONSOLIDATED INPUT TEXT:
+        RAW EXTRACTED CV DATA (FROM STEP 1):
+        ---
+        {json.dumps(extracted_data, indent=2)}
+        ---
+
+        FULL CONTEXT (includes CV and potential Job Description for analysis):
         ---
         {consolidated_text}
         ---
-        """
-        # The rewriting prompt is correct and remains unchanged.
-        rewriting_prompt = f"""
-        You are a meticulous and precise professional CV editor for the Swiss market. Your task is to refine the provided raw JSON data into a polished, professional, and factual narrative that is strategically aligned with the target job, adhering to strict limits.
-        RAW EXTRACTED CV DATA (FROM STEP 1): --- {json.dumps(extracted_data, indent=2)} ---
-        FULL CONTEXT (includes CV and potential Job Description for analysis): --- {consolidated_text} ---
+
         **JSON Structure Requirements for FINAL OUTPUT (Strictly follow this):**
         The root JSON object must contain these keys: "personal_info", "summary_paragraphs", "languages", "skills", "work_experience", "education", "hobbies".
+        - `personal_info`: Object with keys "NAME", "JOB_TITLE", "phone", "email", "city", "zip", "country", "Linkedin".
+        - `summary_paragraphs`: List of two strings.
+        - `languages`: List of objects, each with "language" and "level". **MAXIMUM of 6.**
+        - `skills`: List of strings. **MAXIMUM of 6.**
+        - `work_experience`: List of objects. **MAXIMUM of 10.**
+        - `education`: List of objects. **MAXIMUM of 10.**
+        - `hobbies`: List of strings. **MAXIMUM of 6.**
+
+        ---
+
         **Advanced Rewriting and Content Generation Rules:**
-        **1. Core Analysis & `JOB_TITLE` Determination (CRITICAL):**
+
+        **1. Core Analysis & `JOB_TITLE` Determination:**
         - Analyze the FULL CONTEXT to identify if a future job description is present.
-        - **`JOB_TITLE` (Target Job Title):** If a job description exists, derive the `JOB_TITLE` from it. Otherwise, create a professional, grounded future headline based on their most recent role.
+        - **`JOB_TITLE`:** If a job description exists, derive the `JOB_TITLE` from it. Otherwise, create a professional, grounded future headline based on their most recent role.
         - **`personal_info.NAME`:** Capitalize the person's name.
+
         **2. Tone and Language (CRITICAL):**
         - **Language:** Use British English.
-        - **Dynamic Tone Selection based on user's choice: '{tone_selection}'**:
-            - **'Executive / Leadership':** Focus on strategy, vision, P&L, team leadership.
-            - **'Technical / Expert':** Focus on deep domain knowledge, technical proficiency.
-            - **'Sales / Commercial':** Focus on revenue generation, market growth.
-            - **'Project Management':** Focus on on-time and on-budget delivery.
-            - **'General Professional':** Focus on competence, reliability, collaboration.
+        - **Dynamic Tone Selection based on user's choice: '{tone_selection}'**. You must adapt your vocabulary, phrasing, and the aspects of the candidate's experience you highlight based on the following detailed rules:
+            - **If 'Executive / Leadership':** Core Focus on strategy, vision, P&L responsibility, team leadership. Emphasize financial metrics, team size, C-level stakeholder management.
+            - **If 'Technical / Expert':** Core Focus on deep domain knowledge, technical proficiency. Emphasize specific technologies, methodologies, certifications.
+            - **If 'Sales / Commercial':** Core Focus on revenue generation, market growth, client acquisition. Emphasize quantifiable sales results (CHF, %), quota attainment.
+            - **If 'Project Management':** Core Focus on on-time/on-budget delivery, process efficiency. Emphasize project scope, methodologies.
+            - **If 'General Professional':** Core Focus on competence, reliability, effective collaboration. Emphasize key responsibilities, teamwork, process improvements.
+
         **3. Professional Summary (`summary_paragraphs`):**
-        - **Paragraph 1 (Strictly Two Sentences, max 310 chars, quantify):** Sentence 1 defines professional identity. Sentence 2 states the most impressive, quantifiable achievement.
-        - **Paragraph 2 (First-person "I", max 160 chars):** Synthesizes core motivators and values.
-        **4. Work Experience (`work_experience`) - MAX 10:**
+        - **Paragraph 1 (Strictly Two Sentences, max 310 chars, quantify whenever possible):**
+            - **Sentence 1:** Define the candidate's professional identity (e.g., "Commercial Leader with 15 years of experience in the biotech sector.").
+            - **Sentence 2:** State their single most impressive and quantifiable achievement from their recent career (e.g., "Most recently, drove regional growth by 18%...").
+        - **Paragraph 2 (First-person "I", max 160 chars):**
+            - Synthesize the candidate's core motivators and values. **Strictly adhere to a maximum of 160 characters (including spaces).**
+
+        **4. Work experience (`work_experience`) - Max 10 entries:**
+        - Prioritize the most recent and relevant roles.
         - Rename keys: `job_title` to `title`, `from_date` to `from`, `to_date` to `to`.
-        - **Achievements (CRITICAL - Narrative Rewrite):** Each sentence must follow the structure: **"I achieved [A: The Key Result] by doing [B: The Action/Method], resulting in [C: The Business Impact]."**
-        **5. Negative Constraints (AVOID AT ALL COSTS):**
-        - No Passive Voice. Strictly avoid buzzwords like: seasoned, results-driven, dynamic, passionate, team player, etc.
+        - **Responsibility**: Write 1-2 concise, factual sentences describing the role's scope.
+        - **Achievements (CRITICAL - Crafting Success Stories):**
+            - Transform simple bullet points into 1 to 3 powerful, personal success stories for each job.
+            - Each story must be a single, detailed sentence that answers: "What did I accomplish?", "How did I do it?", and "Why did it matter?".
+            - **Perfect Example:** "By investigating and quality-checking over 2,000 ICSR cases..., I achieved a 15% reduction in data discrepancies and ensured 100% inspection-readiness."
+            - **Mandatory Constraints:** Frame from the first-person perspective. Each sentence should be approx. 25-45 words long. Use only available information.
+
+        **5. Skills Selection & Prioritization (CRITICAL - MAX 6):**
+        - Analyze all skills and select the six (6) most relevant to the job description.
+
+        **6. Language & Hobbies (CRITICAL - MAX 6 each):**
+        - For `languages`, select a maximum of 6, prioritizing the highest proficiency.
+        - For `hobbies`, select a maximum of 6 relevant entries.
+
+        **7. Education (MAX 10):**
+        - Select a maximum of 10 education entries. Rename `graduation_date` to `graduation`.
+
+        **8. Negative Constraints (AVOID AT ALL COSTS):**
+        - No Passive Voice. Strictly avoid: seasoned, results-driven, dynamic, motivated, proven track record, passionate, innovative, creative thinker, strategic thinker, team player, etc.
+        - Demonstrate qualities, do not state them.
+
         **Final Instruction:** Your entire output MUST be a single, valid JSON object.
         """
 
